@@ -32,7 +32,8 @@ def create_model(arch, freeze_bn, dropout, num_classes, load_model_path):
     return model
 
 
-def get_parameters(model, base_lr=1.0, finetune=False, fixedcls=False, fixed_backbone=False):
+def get_parameters(model, base_lr=1.0, fixedcls=False, fixed_backbone=False, finetune=True):
+    assert finetune == True, 'Currently only finetune=True is supported. '
     logging.info(f'finetune: {finetune}, fixedcls: {fixedcls}')
     all_params = [{
         "params": model.backbone.parameters(),
@@ -55,7 +56,6 @@ def get_parameters(model, base_lr=1.0, finetune=False, fixedcls=False, fixed_bac
         _ind = [0, 1, 2]
     params = [all_params[i] for i in _ind]
     return params
-
 
 def get_model(model_name, pretrained=True):
     if model_name in models.__dict__:
@@ -80,12 +80,13 @@ def get_model(model_name, pretrained=True):
 def build_optimizer(model, optimizer, optimizer_parameters, freeze_classifier, freeze_backbone):
     assert 'lr' in optimizer_parameters, 'lr must be specified in optimizer_parameters'
     base_lr = optimizer_parameters['lr']
-    params = get_parameters(model, base_lr, freeze_classifier, freeze_backbone)
+    params = get_parameters(model, base_lr, fixedcls=freeze_classifier, fixed_backbone=freeze_backbone)
     if optimizer == 'SGD':
         optimizer = SGD(params, **optimizer_parameters)
     elif optimizer == 'Adam':
         optimizer = Adam(params, **optimizer_parameters)
     else:
         raise NotImplementedError()
-    logging.debug(f'\nOptimizer: \n{optimizer}')
+    optimizer_str = str(optimizer)
+    logging.info(f'\nOptimizer: \n{optimizer_str}')
     return optimizer

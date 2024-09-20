@@ -159,6 +159,7 @@ class PartialDomainTrainer:
 
     def evaluate(self):
         evaluation_result = {}
+        
         # Validation on training data
         training_loader = self.training_loader
         training_dataset = training_loader.dataset
@@ -166,6 +167,7 @@ class PartialDomainTrainer:
         model = self.model
         model.eval()
         training_dataset.eval()
+
         # Extract training oracle features
         training_dataset.set_scope('all')
         logging.debug('Validating on training oracle data...')
@@ -174,6 +176,7 @@ class PartialDomainTrainer:
             oracle_training_evaluation = evaluate.evaluate(domain_info, oracle_training_extraction,
                                                            oracle_training_extraction)
         evaluation_result['oracle_training'] = oracle_training_evaluation
+
         # Extract training features
         training_dataset.set_scope('visible')
         logging.debug('Validating on training data... ')
@@ -181,19 +184,24 @@ class PartialDomainTrainer:
             training_extraction = self.extract(training_loader)
             training_evaluation = evaluate.evaluate(domain_info, training_extraction, oracle_training_extraction)
         evaluation_result['training'] = training_evaluation
+
         # Validation on validation data
         val_loaders = self.val_loaders
+        
+        # Extract validation features
         for k, val_loader in val_loaders.items():
             logging.debug(f'Validating on {k} data... ')
             val_dataset = val_loader.dataset
             val_domain_info = val_dataset.domain_info
             val_dataset.eval()
             val_dataset.set_scope('all')
+
             # Extract validation features
             with torch.no_grad():
                 val_extraction = self.extract(val_loader)
                 val_evaluation = evaluate.evaluate(val_domain_info, val_extraction, oracle_training_extraction)
             evaluation_result[k] = val_evaluation
+        
         return evaluation_result
 
     def evaluate_and_save(self):
@@ -209,6 +217,8 @@ class PartialDomainTrainer:
         assert self._inited, 'Trainer has not been initialized. '
         logging.info(f'Starting training, training_config: {self.training_config}... ')
         logging.info('Initializing... ')
+        
+        # Prepare variables
         state = self.state
         epochs = state['epochs']
         iterations = state['iterations']
@@ -216,22 +226,26 @@ class PartialDomainTrainer:
         eval_freq = training_config['evaluate_freq']
         eval_every = max(1, int(iterations * eval_freq))
         logging.debug(f'Evaluation frequency: {eval_every}. ')
-        logging.info('Pre-training evaluating... ')
-        self._print_evaluate()
+        
         for epoch in range(state['next_epoch'], epochs):
             state['n_data_epoch'] = 0
             for iteration in range(state['next_iteration'], iterations):
-                logging.debug(f'Epoch {epoch}, iteration {iteration}... ')
-                # Training iteration
-                self._training_iteration()
-                # Post iteration
-                state['next_iteration'] = iteration + 1
-                state['lr_scheduler'].step()
                 # Evaluation
                 if iteration % eval_every == 0:
                     logging.info(f'Epoch {epoch}, iteration {iteration}, evaluating... ')
                     self._print_evaluate()
+                    
+                logging.debug(f'Epoch {epoch}, iteration {iteration}... ')
+                
+                # Training iteration
+                self._training_iteration()
+                
+                # Post iteration
+                state['next_iteration'] = iteration + 1
+                state['lr_scheduler'].step()
+            
             logging.info(f'Epoch {epoch} finished. Number of data seen: {state["n_data_epoch"]}. ')
+
             # TODO: Refactor this line
             self.evaluate_and_save()
             state['next_iteration'] = 0

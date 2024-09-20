@@ -20,7 +20,6 @@ def _precheck_arguments(args):
     assert common.is_json(args.training_config), f"Train config is not in json format: {args.training_config}. "
     assert common.is_json(
         args.optimizer_parameters), f"Optimizer parameters is not in json format: {args.optimizer_parameters}. "
-    assert args.horizontal_visible is None or 0 <= args.horizontal_visible <= 1, f"Invalid horizontal visible: {args.horizontal_visible}. "
 
 def _process_arguments(args):
     args.serialization_config = json.loads(args.serialization_config)
@@ -61,7 +60,6 @@ def parse_arguments():
         parser.add_argument('--training_config',
                             default='{"epochs":20,"iterations":500,"save_every":1,"evaluate_freq":0.2}')
         parser.add_argument('--n_seen_classes', type=int, default=30)
-        parser.add_argument('--horizontal_visible', type=float, default=1)
         parser.add_argument('--optimizer', type=str, default='SGD')
         parser.add_argument('--optimizer_parameters', type=str,
                             default='{"lr":1e-3,"weight_decay":5e-4,"momentum":0.9,"nesterov":true}')

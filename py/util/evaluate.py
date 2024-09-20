@@ -148,19 +148,40 @@ def evaluate_nmc(domain_info, extraction, oracle_extraction):
 def evaluate_lp():
     pass
 
+# TODO: Arpita: finish this methods following my other evalute methods
+def evaluate_auc(domain_info, extraction, oracle_extraction):
+    pass
+
+def evaluate_calibration(domain_info, extraction, oracle_extraction, method='baseline'):
+    pass
 
 def evaluate(domain_info, extraction, oracle_extraction):
     # Evaluate the features through the classifier (regular cnn model)
     clsf_metric = evaluate_clsf(domain_info, extraction, oracle_extraction)
+    
     # Evaluate the features through the nearest mean classifier
     nmc_metric = evaluate_nmc(domain_info, extraction, oracle_extraction)
+    
     # Evaluate the features through the linear probing
     lp_metric = evaluate_lp()
+
+    # Evaluate AUC
+    auc_metric = evaluate_auc(domain_info, extraction, oracle_extraction)
+
+    # Evaluate baseline calibration
+    baseline_calibration_metric = evaluate_calibration(domain_info, extraction, oracle_extraction)
+
+    # Evaluate better calibration
+    better_calibration_metric = evaluate_calibration(domain_info, extraction, oracle_extraction, method='better')
+
     # Package evaluation
     evaluation_metric = {
         'Classifier Accuracy': clsf_metric,
         'NMC Accuracy': nmc_metric,
-        'LP Metric': lp_metric
+        'LP Metric': lp_metric,
+        'AUC': auc_metric,
+        'Baseline Calibration': baseline_calibration_metric,
+        'Better Calibration': better_calibration_metric
     }
     evaluation = Evaluation(domain_info, extraction, evaluation_metric)
     return evaluation

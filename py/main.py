@@ -62,7 +62,6 @@ def main(args):
     serialization_config = args.serialization_config
     model_config = args.model_config
     n_seen_classes = args.n_seen_classes
-    horizontal_visible = args.horizontal_visible
     batch_size = args.batch_size
     workers = args.workers
     optimizer_type = args.optimizer
@@ -81,7 +80,6 @@ def main(args):
                              target=target,
                              model_config=model_config,
                              n_seen_classes=n_seen_classes,
-                             horizontal_visible=horizontal_visible,
                              optimizer=optimizer_type,
                              optimizer_parameters=optimizer_parameters,
                              seed=seed, 
@@ -118,22 +116,28 @@ def main(args):
     from . import HT_HARDCODED as HC
     all_classes, visible_classes = HC.GET_VISIBLE_CLASSES(dataset_name, source, target, n_seen_classes)
 
+    # Create data loaders
     logging.info('Creating domain info... ')
-    domain_info = data_api.DomainInfo(all_classes, visible_classes, horizontal_visible)
+    domain_info = data_api.DomainInfo(all_classes, visible_classes)
+    
     logging.info('Creating partial domain training dataset... ')
-    training_data = data_api.PartialDomainDataset(training_data, domain_info, horizontal_all=False)
+    training_data = data_api.PartialDomainDataset(training_data, domain_info)
     logging.info(f'Training Visible size: {len(training_data.visible_ind)}')
+    
     logging.info('Creating partial domain testing dataset... ')
-    testing_data = data_api.PartialDomainDataset(testing_data, domain_info, horizontal_all=True)
+    testing_data = data_api.PartialDomainDataset(testing_data, domain_info)
     logging.info(f'Testing Visible size: {len(testing_data.visible_ind)}')
+    
     logging.info('Creating training data loader... ')
     training_data.domain_info.to(device)
     testing_data.domain_info.to(device)
     training_loader = DataLoader(training_data, batch_size=batch_size, shuffle=True, num_workers=workers,
                                  drop_last=True)
+    
     logging.info('Creating testing data loader... ')
     testing_loader = DataLoader(testing_data, batch_size=batch_size, shuffle=False, num_workers=workers)
     logging.info(f'Domain info: {domain_info}')
+    
     # Init model
     logging.info(f'Creating model... ')
     source_model_path = experiment.source_model_path

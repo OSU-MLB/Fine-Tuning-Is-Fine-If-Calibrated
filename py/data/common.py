@@ -6,13 +6,12 @@ from torch.utils.data import DataLoader, Dataset
 
 
 class DomainInfo:
-    def __init__(self, all_classes, visible_classes, horizontal_visible, invisible_classes=None, num_classes=None):
+    def __init__(self, all_classes, visible_classes, invisible_classes=None, num_classes=None):
         assert isinstance(all_classes, torch.Tensor), 'all_classes must be a tensor. '
         assert isinstance(visible_classes, torch.Tensor), 'visible_classes must be a tensor. '
         assert (invisible_classes is None) or (isinstance(invisible_classes, torch.Tensor)), 'invisible_classes must be a tensor. '
         self.all_classes = all_classes
         self.visible_classes = visible_classes
-        self.horizontal_visible = horizontal_visible
         if invisible_classes is None:
             visible_clz_ind = torch.isin(all_classes, visible_classes)
             invisible_clz_ind = ~visible_clz_ind
@@ -35,18 +34,18 @@ class DomainInfo:
         return self
     
     def __repr__(self):
-        return f'DomainInfo(all_classes={self.all_classes}, visible_classes={self.visible_classes}, horizontal_visible={self.horizontal_visible}, invisible_classes={self.invisible_classes}, num_classes={self.num_classes})'
+        return f'DomainInfo(all_classes={self.all_classes}, visible_classes={self.visible_classes}, invisible_classes={self.invisible_classes}, num_classes={self.num_classes})'
 
 
 class PartialDomainDataset(Dataset):
 
-    def __init__(self, dataset: Dataset, domain_info: DomainInfo, horizontal_all: bool = False):
+    def __init__(self, dataset: Dataset, domain_info: DomainInfo):
         start = time.time()
-        _validation_dataset = self._check_dataset_format(dataset)
+        _valid = self._check_dataset_format(dataset)
+        assert _valid, 'PartialDomainDataset only supports dataset with (data, target) format. '
+
         self.dataset = self._make_ordered_dataset(dataset)
         self.domain_info = copy.deepcopy(domain_info)
-        self.horizontal_all = horizontal_all
-        assert _validation_dataset, 'PartialDomainDataset only supports dataset with (data, target) format. '
         self._iterate_ind = None
         self.visible_ind = None
         self.invisible_ind = None
@@ -75,26 +74,22 @@ class PartialDomainDataset(Dataset):
         return valid
 
     def _init_indices(self):
+        logging.debug('Initializing indices... ')
         domain_info = self.domain_info
         visible_classes = domain_info.visible_classes
         invisible_classes = domain_info.invisible_classes
-        horizontal_visible = domain_info.horizontal_visible
         visible_ind = []
         invisible_ind = []
         all_ind = []
         labels = []
         for i, (_, _c) in self.dataset:
             if _c in visible_classes:
-                if self.horizontal_all or torch.rand(1) < horizontal_visible:
-                    visible_ind.append(i)
-                else:
-                    invisible_ind.append(i)
+                visible_ind.append(i)
             elif _c in invisible_classes:
                 invisible_ind.append(i)
             all_ind.append(i)
             labels.append(_c)
         self.visible_ind = visible_ind
-        # Randomly sample from visible classes according to horizontal_visible
         self.invisible_ind = invisible_ind
         self.all_ind = all_ind
         assert len(self.visible_ind) + len(self.invisible_ind) == len(self.dataset), 'Visible and invisible indices do not match the dataset. '
@@ -102,6 +97,7 @@ class PartialDomainDataset(Dataset):
         domain_info.visible_ind = torch.tensor(self.visible_ind)
         domain_info.invisible_ind = torch.tensor(self.invisible_ind)
         domain_info.labels = torch.tensor(labels)
+        logging.debug('Indices initialized. ')
 
     def __getitem__(self, index):
         return self.dataset[self._iterate_ind[index]]

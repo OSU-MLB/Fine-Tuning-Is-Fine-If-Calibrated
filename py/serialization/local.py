@@ -111,7 +111,7 @@ class PathTree:
 
 
 class Serialization:
-    def __init__(self, base_path, dataset, arch, source, target, n_seen_classes, horizontal_visible, model_config, optimizer,
+    def __init__(self, base_path, dataset, arch, source, target, n_seen_classes, model_config, optimizer,
                  optimizer_parameters, seed):
         self.base_path = base_path
         self.dataset = dataset
@@ -119,7 +119,6 @@ class Serialization:
         self.source = source
         self.target = target
         self.n_seen_classes = str(n_seen_classes)
-        self.horizontal_visible = str(horizontal_visible)
         self.model_config = str(model_config)
         self.optimizer = optimizer
         self.optimizer_parameters = str(optimizer_parameters)
@@ -128,7 +127,7 @@ class Serialization:
 
     @property
     def path(self):
-        return os.path.join(self.base_path, self.dataset, self.arch, self.source, self.target, self.n_seen_classes, self.horizontal_visible, 
+        return os.path.join(self.base_path, self.dataset, self.arch, self.source, self.target, self.n_seen_classes, 
                             self.model_config, self.optimizer, self.optimizer_parameters, self.seed)
 
     @property
@@ -147,18 +146,17 @@ class Serialization:
         source = s[2]
         target = s[3]
         n_seen_classes = s[4]
-        horizontal_visible = s[5]
-        model_config = s[6]
-        optimizer = s[7]
-        optimizer_parameters = s[8]
-        seed = s[9]
-        return dataset, arch, source, target, n_seen_classes, horizontal_visible, model_config, optimizer, optimizer_parameters, seed
+        model_config = s[5]
+        optimizer = s[6]
+        optimizer_parameters = s[7]
+        seed = s[8]
+        return dataset, arch, source, target, n_seen_classes, model_config, optimizer, optimizer_parameters, seed
 
     @staticmethod
     def from_path(CLS, base_path, path):
-        dataset, arch, source, target, n_seen_classes, horizontal_visible, model_config, optimizer, optimizer_parameters, seed = Serialization.parse_path(
+        dataset, arch, source, target, n_seen_classes, model_config, optimizer, optimizer_parameters, seed = Serialization.parse_path(
             path)
-        return CLS(base_path, dataset, arch, source, target, n_seen_classes, horizontal_visible, model_config, optimizer,
+        return CLS(base_path, dataset, arch, source, target, n_seen_classes, model_config, optimizer,
                    optimizer_parameters, seed)
 
     def create(self):
@@ -211,6 +209,8 @@ class Experiment(Serialization):
         
         logger.addHandler(fh)
         logger.addHandler(ch)
+
+        logging.root = logger
         
         logger.info(f'Experiment start time: {datetime.now()}')
         logger.info(f'Experiment path: {self.path}')
@@ -262,7 +262,6 @@ class SerializationSpace:
         self.instances['source'][instance.source].add(instance)
         self.instances['optimizer_parameters'][instance.optimizer_parameters].add(instance)
         self.instances['n_seen_classes'][instance.n_seen_classes].add(instance)
-        self.instances['horizontal_visible'][instance.horizontal_visible].add(instance)
         self.instances['seed'][instance.seed].add(instance)
         self.instances['target'][instance.target].add(instance)
 
@@ -308,8 +307,8 @@ class ExperimentSpace(SerializationSpace):
     def instance_from_path(self, path):
         return Serialization.from_path(Experiment, self.base_path, path)
     
-    def start(self, dataset, arch, source, target, model_config, n_seen_classes, horizontal_visible, optimizer, optimizer_parameters, seed, debug):
-        instance = Experiment(self.base_path, dataset, arch, source, target, n_seen_classes, horizontal_visible, model_config, optimizer, optimizer_parameters, seed)
+    def start(self, dataset, arch, source, target, model_config, n_seen_classes, optimizer, optimizer_parameters, seed, debug):
+        instance = Experiment(self.base_path, dataset, arch, source, target, n_seen_classes, model_config, optimizer, optimizer_parameters, seed)
         if not instance.exists:
             instance.create()
         self.add(instance)
