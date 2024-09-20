@@ -2,10 +2,9 @@
 
 ## Official Releases
 
-This repository details the official releases of following works:
+This repository details the official releases of following work:
 
-1. Holistic Transfer: Towards Non-Disruptive Fine-Tuning with Partial Target Data
-2. Fine-Tuning is Fine with Partial Target Data
+_Fine-Tuning is Fine with Partial Target Data_
 
 ## Training Instructions
 
