@@ -50,10 +50,13 @@ def parse_arguments():
     parser.add_argument('--seed', type=common.type_or_none(int), default=0)
     parser.add_argument('--serialization_config', default='{}')
     parser.add_argument('--debug', action='store_true')
+    parser.add_argument('--train', action='store_true', help='Evaluate the model')
+    parser.add_argument('--eval', action='store_true', help='Evaluate the model')
+    parser.add_argument('--pretrained_model_path', type=str, default=None)
     args, _ = parser.parse_known_args()
     if args.dataset == 'OfficeHome':
         parser.add_argument('--batch_size', default=64, type=int)
-        parser.add_argument('--workers', default=4, type=int)
+        parser.add_argument('--workers', default=1, type=int)
         parser.add_argument('--arch', default='resnet50')
         parser.add_argument('--model_config',
                             default='{"loss_type":"cross-entropy","loss_scope":"all","dropout":0.1,"freeze_classifier":false,"freeze_bn":false,"freeze_backbone":false}')

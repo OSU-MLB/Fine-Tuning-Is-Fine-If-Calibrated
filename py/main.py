@@ -49,6 +49,9 @@ class HolisticTransfer:
         self._wrap_evaluate_and_save()
         self.trainer.fit()
 
+    def evaluate(self):
+        self.trainer.evaluate()
+
 
 def main(args):
     # Unpack arguments
@@ -138,28 +141,56 @@ def main(args):
     testing_loader = DataLoader(testing_data, batch_size=batch_size, shuffle=False, num_workers=workers)
     logging.info(f'Domain info: {domain_info}')
     
-    # Init model
-    logging.info(f'Creating model... ')
-    source_model_path = experiment.source_model_path
-    model = model_util.create_model(arch, freeze_bn, dropout, domain_info.num_classes, source_model_path)
+    if args.train:
+        # Init model
+        logging.info(f'Creating model... ')
+        source_model_path = experiment.source_model_path
+        model = model_util.create_model(arch, freeze_bn, dropout, domain_info.num_classes, source_model_path)
 
-    # Init optimizer
-    logging.info(f'Creating optimizer... ')
-    optimizer = model_util.build_optimizer(model, optimizer_type, optimizer_parameters, freeze_classifier,
-                                           freeze_backbone)
+        # Init optimizer
+        logging.info(f'Creating optimizer... ')
+        optimizer = model_util.build_optimizer(model, optimizer_type, optimizer_parameters, freeze_classifier,
+                                            freeze_backbone)
 
-    # Create trainer
-    logging.info(f'Creating trainer... ')
-    trainer = train.PartialDomainTrainer(model, optimizer, loss_type, loss_scope, device)
-    trainer.set_training_loader(training_loader)
-    trainer.add_val_loader('testing', testing_loader)
-    trainer.set_training_config(training_config)
+        # Create trainer
+        logging.info(f'Creating trainer... ')
+        trainer = train.PartialDomainTrainer(model, optimizer, loss_type, loss_scope, device)
+        trainer.set_training_loader(training_loader)
+        trainer.add_val_loader('testing', testing_loader)
+        trainer.set_training_config(training_config)
 
-    # Create HT instance
-    logging.info(f'Creating HolisticTransfer instance... ')
-    ht = HolisticTransfer(experiment, trainer, serialization_config)
-    logging.info(f'Fitting... ')
-    ht.fit()
+        # Create HT instance
+        logging.info(f'Creating HolisticTransfer instance... ')
+        ht = HolisticTransfer(experiment, trainer, serialization_config)
+
+        logging.info(f'Fitting... ')
+        ht.fit()
+    elif args.eval:
+        # Init model
+        logging.info(f'Creating model... ')
+        assert args.pretrained_model_path is not None
+        model = model_util.create_model(arch, freeze_bn, dropout, domain_info.num_classes, 
+                args.pretrained_model_path)
+
+        # Init optimizer
+        logging.info(f'Creating optimizer... ')
+        optimizer = model_util.build_optimizer(model, optimizer_type, optimizer_parameters, freeze_classifier,
+                                            freeze_backbone)
+
+        # Create trainer
+        logging.info(f'Creating trainer... ')
+        trainer = train.PartialDomainTrainer(model, optimizer, loss_type, loss_scope, device)
+        trainer.set_training_loader(training_loader)
+        trainer.add_val_loader('testing', testing_loader)
+        trainer.set_training_config(training_config)
+
+        # Create HT instance
+        logging.info(f'Creating HolisticTransfer instance... ')
+        ht = HolisticTransfer(experiment, trainer, serialization_config)
+
+        logging.info(f'Evaluating... ')
+        ht.evaluate()
+        
 
     logging.info('Done. ')
     sys.exit(0)
