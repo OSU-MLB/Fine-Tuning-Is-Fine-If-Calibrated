@@ -4,7 +4,6 @@ import os
 from collections import defaultdict
 from functools import reduce
 from datetime import datetime
-import torch
 
 from ..util import constant as C
 from ..util import common
@@ -114,13 +113,13 @@ class Serialization:
     def __init__(self, base_path, dataset, arch, source, target, n_seen_classes, model_config, optimizer,
                  optimizer_parameters, seed):
         self.base_path = base_path
-        self.dataset = dataset
-        self.arch = arch
-        self.source = source
-        self.target = target
+        self.dataset = str(dataset)
+        self.arch = str(arch)
+        self.source = str(source)
+        self.target = str(target)
         self.n_seen_classes = str(n_seen_classes)
         self.model_config = str(model_config)
-        self.optimizer = optimizer
+        self.optimizer = str(optimizer)
         self.optimizer_parameters = str(optimizer_parameters)
         self.seed = str(seed)
         self.files = None
@@ -185,16 +184,19 @@ class Experiment(Serialization):
         self.tree = PathTree(self.path)
         self.tree._construct()
 
+
     def set_logging(self, debug):
-        if logging.getLogger(str(os.getpid())).handlers:
-            return
-        
+        logger = logging.getLogger(C.LOGGER_NAME)
+
+        if logger.handlers:
+            for handler in logger.handlers:
+                logger.removeHandler(handler)
+
         if debug:
             level = logging.DEBUG
         else:
             level = logging.INFO
         
-        logger = logging.getLogger(str(os.getpid()))
         logger.setLevel(level)
 
         fh = logging.FileHandler(self.log_path, mode='w')
@@ -203,18 +205,20 @@ class Experiment(Serialization):
         ch = logging.StreamHandler()
         ch.setLevel(level)
         
-        formatter = logging.Formatter(C.LOG_FORMAT)
+        formatter = logging.Formatter(C.LOGGER_FORMAT)
         fh.setFormatter(formatter)
         ch.setFormatter(formatter)
         
         logger.addHandler(fh)
         logger.addHandler(ch)
-
+        logger.propagate = False
         logging.root = logger
-        
+
         logger.info(f'Experiment start time: {datetime.now()}')
         logger.info(f'Experiment path: {self.path}')
         logger.info(f'Experiment info: {self}')
+
+
 
     def abs_path(self, path):
         return os.path.join(self.path, path)

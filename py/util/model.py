@@ -34,7 +34,7 @@ def create_model(arch, freeze_bn, dropout, num_classes, load_model_path):
 
 def get_parameters(model, base_lr=1.0, fixedcls=False, fixed_backbone=False, finetune=True):
     assert finetune == True, 'Currently only finetune=True is supported. '
-    logging.info(f'finetune: {finetune}, fixedcls: {fixedcls}')
+    logging.debug(f'finetune: {finetune}, fixedcls: {fixedcls}')
     all_params = [{
         "params": model.backbone.parameters(),
         "lr": 0.1 * base_lr if finetune else 1.0 * base_lr
@@ -57,6 +57,7 @@ def get_parameters(model, base_lr=1.0, fixedcls=False, fixed_backbone=False, fin
     params = [all_params[i] for i in _ind]
     return params
 
+
 def get_model(model_name, pretrained=True):
     if model_name in models.__dict__:
         # load models from tllib.vision.models
@@ -76,6 +77,7 @@ def get_model(model_name, pretrained=True):
             backbone.out_features = backbone.head.in_features
             backbone.head = nn.Identity()
     return backbone
+
 
 def build_optimizer(model, optimizer, optimizer_parameters, freeze_classifier, freeze_backbone):
     assert 'lr' in optimizer_parameters, 'lr must be specified in optimizer_parameters'

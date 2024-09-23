@@ -119,7 +119,7 @@ class ImageClassifier(Classifier):
         if freeze_bn:
             self.feature_dropout = nn.Dropout(p=dropout_p)
 
-    def forward(self, x: torch.Tensor, return_feat: bool = False, return_unpooled_feat: bool = False):
+    def forward(self, x: torch.Tensor, return_feat: bool = False):
         f_unpooled = self.backbone(x)
         f = self.pool_layer(f_unpooled)
         f = self.bottleneck(f)
@@ -129,8 +129,8 @@ class ImageClassifier(Classifier):
         res = [predictions]
         if self.training or return_feat:
             res.append(f)
-        if return_unpooled_feat:
-            res.append(f_unpooled)
+        # if return_unpooled_feat:
+        #     res.append(f_unpooled)
         return tuple(res)
 
     def train(self, mode=True):

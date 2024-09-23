@@ -6,6 +6,7 @@ from . import constant as C
 
 
 def _precheck_arguments(args):
+    # Check if dataset is supported
     if args.dataset == 'OfficeHome':
         if args.source == 'Ar':
             assert args.target in ['Cl', 'Pr', 'Rw']
@@ -13,6 +14,35 @@ def _precheck_arguments(args):
             assert args.target in ['Ar', 'Cl', 'Pr']
         else:
             raise NotImplementedError()
+    elif args.dataset == 'ImageNet':
+        assert args.target in ['R', 'S']
+
+    # Check if train and eval are mutually exclusive
+    assert (args.train or args.eval) and not (
+        args.train and args.eval), f"Either train or eval should be provided. "
+
+    # Check if pretrained model path is provided when evaluating
+    if args.eval:
+        assert args.eval_model_path is not None, f"Pretrained model path is not provided when evaluating. "
+    
+    # Check seen classes
+    if args.dataset == 'OfficeHome':
+        if args.n_seen_classes is None:
+            args.n_seen_classes = C.OFFICEHOME_DEFAULT_N_SEEN_CLASSES
+        assert 0 < args.n_seen_classes <= C.OFFICEHOME_N_CLASSES, f"Number of seen classes should be in (0, {C.OFFICEHOME_N_CLASSES}]. "
+    elif args.dataset == 'ImageNet' and args.target == 'R':
+        if args.n_seen_classes is None:
+            args.n_seen_classes = C.IMAGENET_R_DEFAULT_N_SEEN_CLASSES
+        assert 0 < args.n_seen_classes <= C.IMAGENET_R_N_CLASSES, f"Number of seen classes should be in (0, {C.IMAGENET_R_N_CLASSES}]. "
+    elif args.dataset == 'ImageNet' and args.target == 'S':
+        if args.n_seen_classes is None:
+            args.n_seen_classes = C.IMAGENET_S_DEFAULT_N_SEEN_CLASSES
+        assert 0 < args.n_seen_classes <= C.IMAGENET_S_N_CLASSES, f"Number of seen classes should be in (0, {C.IMAGENET_S_N_CLASSES}]. "
+
+    # Check if source is None for ImageNet dataset
+    if args.dataset == 'ImageNet':
+        assert args.source is None, f"Source should be None for ImageNet dataset. "
+
     # Check if method and optimizer_parameters are in json format
     assert common.is_json(
         args.serialization_config), f"Serialization config is not in json format: {args.serilization_config}. "
@@ -52,22 +82,34 @@ def parse_arguments():
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--train', action='store_true', help='Evaluate the model')
     parser.add_argument('--eval', action='store_true', help='Evaluate the model')
-    parser.add_argument('--pretrained_model_path', type=str, default=None)
+    parser.add_argument('--eval_model_path', type=str, default=None)
+    parser.add_argument('--workers', default=1, type=int)
     args, _ = parser.parse_known_args()
     if args.dataset == 'OfficeHome':
         parser.add_argument('--batch_size', default=64, type=int)
-        parser.add_argument('--workers', default=1, type=int)
         parser.add_argument('--arch', default='resnet50')
         parser.add_argument('--model_config',
                             default='{"loss_type":"cross-entropy","loss_scope":"all","dropout":0.1,"freeze_classifier":false,"freeze_bn":false,"freeze_backbone":false}')
         parser.add_argument('--training_config',
                             default='{"epochs":20,"iterations":500,"save_every":1,"evaluate_freq":0.2}')
-        parser.add_argument('--n_seen_classes', type=int, default=30)
+        parser.add_argument('--n_seen_classes', type=int, default=None)
         parser.add_argument('--optimizer', type=str, default='SGD')
         parser.add_argument('--optimizer_parameters', type=str,
                             default='{"lr":1e-3,"weight_decay":5e-4,"momentum":0.9,"nesterov":true}')
+    elif args.dataset == 'ImageNet':
+        {'lr':1e-3,'weight_decay':1e-4,'momentum':0.9,'nesterov':True}
+        parser.add_argument('--batch_size', default=64, type=int)
+        parser.add_argument('--arch', default='resnet50')
+        parser.add_argument('--model_config',
+                            default='{"loss_type":"cross-entropy","loss_scope":"all","dropout":0.1,"freeze_classifier":false,"freeze_bn":false,"freeze_backbone":false}')
+        parser.add_argument('--training_config',
+                            default='{"epochs":50,"iterations":500,"save_every":1,"evaluate_freq":0.2}')
+        parser.add_argument('--n_seen_classes', type=int, default=None)
+        parser.add_argument('--optimizer', type=str, default='SGD')
+        parser.add_argument('--optimizer_parameters', type=str,
+                            default='{"lr":1e-3,"weight_decay":1e-4,"momentum":0.9,"nesterov":true}')
     else:
-        raise NotImplementedError(f"Unsupported dataset: {args.dataset}. ")
+        raise NotImplementedError('Unsupported dataset: {args.dataset}. ')
     args = parser.parse_args()
     _precheck_arguments(args)
     _process_arguments(args)

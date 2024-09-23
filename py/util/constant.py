@@ -1,5 +1,4 @@
 import os
-import logging
 
 # Path
 ASSET_DIR_NAME = 'asset'
@@ -14,9 +13,21 @@ EVALUATE_TOP_K = (1, 5)
 OFFICEHOME_DIR_PATH = os.path.join(ASSET_DIR_NAME, 'OfficeHome')
 OFFICEHOME_DATA_PATH = os.path.join(OFFICEHOME_DIR_PATH, 'data')
 OFFICEHOME_IMAGE_LIST_PATH = os.path.join(OFFICEHOME_DIR_PATH, 'image_list')
+OFFICEHOME_N_CLASSES = 65
+OFFICEHOME_DEFAULT_N_SEEN_CLASSES = 30
+
+# ImageNet dataset
+IMAGENET_DIR_PATH = os.path.join(ASSET_DIR_NAME, 'ImageNet')
+IMAGENET_DATA_PATH = os.path.join(IMAGENET_DIR_PATH, 'data')
+IMAGENET_IMAGE_LIST_PATH = os.path.join(IMAGENET_DIR_PATH, 'image_list')
+IMAGENET_R_N_CLASSES = 200
+IMAGENET_R_DEFAULT_N_SEEN_CLASSES = 100
+IMAGENET_S_N_CLASSES = 1000
+IMAGENET_S_DEFAULT_N_SEEN_CLASSES = 500
 
 # Logging
-LOG_FORMAT = "%(asctime)s - %(levelname)-5s - (%(filename)-10s: %(lineno)4d): %(message)s "
+LOGGER_FORMAT = "%(asctime)s - %(levelname)-5s - (%(filename)-10s: %(lineno)4d): %(message)s "
+LOGGER_NAME = f'HT_{os.getpid()}'
 
 # Space
 SPACE_LEVELS = ['base_path', 'dataset', 'arch', 'source', 'target', 'n_seen_classes', 'model_config', 'optimizer', 'optimizer_parameters', 'seed']

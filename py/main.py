@@ -50,7 +50,7 @@ class HolisticTransfer:
         self.trainer.fit()
 
     def evaluate(self):
-        self.trainer.evaluate()
+        self.trainer.print_evaluate()
 
 
 def main(args):
@@ -107,21 +107,21 @@ def main(args):
         torch.backends.cudnn.deterministic = True
 
     # Load data
-    if dataset_name == 'OfficeHome':
-        logging.info(f'Loading {dataset_name} training dataset... ')
-        training_data = dataset.officehome(target, 'training')
-        logging.info(f'Loading {dataset_name} testing dataset... ')
-        testing_data = dataset.officehome(target, 'testing')
+    logging.info(f'Loading {dataset_name} training dataset... ')
+    training_data = dataset.get_dataset(dataset_name, target, 'training')
+    logging.info(f'Loading {dataset_name} testing dataset... ')
+    testing_data = dataset.get_dataset(dataset_name, target, 'testing')
     training_data_size = len(training_data)
 
     logging.info('Getting visible classes... ')
     # Import hard coded values used in paper
     from . import HT_HARDCODED as HC
-    all_classes, visible_classes = HC.GET_VISIBLE_CLASSES(dataset_name, source, target, n_seen_classes)
+    num_classes, all_classes, visible_classes = HC.GET_VISIBLE_CLASSES(dataset_name, source, target, n_seen_classes)
 
     # Create data loaders
     logging.info('Creating domain info... ')
-    domain_info = data_api.DomainInfo(all_classes, visible_classes)
+    domain_info = data_api.DomainInfo(all_classes, visible_classes, num_classes=num_classes)
+    logging.info(f'Domain info: {domain_info}')
     
     logging.info('Creating partial domain training dataset... ')
     training_data = data_api.PartialDomainDataset(training_data, domain_info)
@@ -139,9 +139,10 @@ def main(args):
     
     logging.info('Creating testing data loader... ')
     testing_loader = DataLoader(testing_data, batch_size=batch_size, shuffle=False, num_workers=workers)
-    logging.info(f'Domain info: {domain_info}')
     
     if args.train:
+        source_model_path = experiment.source_model_path
+
         # Init model
         logging.info(f'Creating model... ')
         source_model_path = experiment.source_model_path
@@ -163,14 +164,17 @@ def main(args):
         logging.info(f'Creating HolisticTransfer instance... ')
         ht = HolisticTransfer(experiment, trainer, serialization_config)
 
-        logging.info(f'Fitting... ')
+        # Fit
+        logging.info('Fitting... ')
         ht.fit()
+
     elif args.eval:
+        source_model_path = args.eval_model_path
+    
         # Init model
         logging.info(f'Creating model... ')
-        assert args.pretrained_model_path is not None
-        model = model_util.create_model(arch, freeze_bn, dropout, domain_info.num_classes, 
-                args.pretrained_model_path)
+        source_model_path = experiment.source_model_path
+        model = model_util.create_model(arch, freeze_bn, dropout, domain_info.num_classes, source_model_path)
 
         # Init optimizer
         logging.info(f'Creating optimizer... ')
@@ -188,9 +192,9 @@ def main(args):
         logging.info(f'Creating HolisticTransfer instance... ')
         ht = HolisticTransfer(experiment, trainer, serialization_config)
 
-        logging.info(f'Evaluating... ')
+        # Evaluate
+        logging.info('Evaluating... ')
         ht.evaluate()
-        
 
     logging.info('Done. ')
     sys.exit(0)

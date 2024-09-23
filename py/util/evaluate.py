@@ -4,15 +4,15 @@ import torch.nn.functional as F
 import prettytable
 import numpy as np
 from sklearn import metrics
+import logging
 
 from . import math
 
 
 class Extraction:
 
-    def __init__(self, features, features_unpooled, logits, labels, data_ind):
+    def __init__(self, features, logits, labels, data_ind):
         self.features = features
-        self.features_unpooled = features_unpooled
         self.logits = logits
         self.labels = labels
         self.data_ind = data_ind
@@ -68,46 +68,53 @@ def get_class_mean(domain_info, features, labels):
     return clz_mean
 
 
-def mask_similarity(similarity, row_mask, column_mask):
-    similarity = copy.deepcopy(similarity)
-    similarity[~row_mask] = -torch.inf
-    similarity[:, ~column_mask] = -torch.inf
-    return similarity
+def mask_score(score, row_mask, column_mask):
+    score = copy.deepcopy(score)
+    score[~row_mask] = -torch.inf
+    score[:, ~column_mask] = -torch.inf
+    return score
 
-def mask_predict_similarity(similarity, label, row_mask=None, column_mask=None):
+def mask_predict_score(score, label, row_mask=None, column_mask=None):
     if row_mask is None:
-        row_mask = torch.ones(similarity.shape[0], dtype=torch.bool)
+        row_mask = torch.ones(score.shape[0], dtype=torch.bool)
     if column_mask is None:
-        column_mask = torch.ones(similarity.shape[1], dtype=torch.bool)
-    masked_similarity = mask_similarity(similarity, row_mask, column_mask)
-    masked_similarity = masked_similarity[row_mask]
+        column_mask = torch.ones(score.shape[1], dtype=torch.bool)
+    masked_score = mask_score(score, row_mask, column_mask)
+    masked_score = masked_score[row_mask]
     masked_label = label[row_mask]
-    accuracy = math.topk_accuracy(masked_similarity, masked_label)
+    accuracy = math.topk_accuracy(masked_score, masked_label)
     return accuracy
 
-def generate_metric(domain_info, similarity, label, data_ind):
+def get_accuracies(domain_info, score, label, data_ind):
     # Unpack domain_info
     visible_classes = domain_info.visible_classes
     invisible_classes = domain_info.invisible_classes
-    dim_similarity = similarity.shape[1]
+    dim_score = score.shape[1]
+
     # Masks
     visible_row_mask = torch.isin(data_ind, domain_info.visible_ind)
     invisible_row_mask = torch.isin(data_ind, domain_info.invisible_ind)
-    visible_column_mask = torch.zeros(dim_similarity, dtype=torch.bool)
+    visible_column_mask = torch.zeros(dim_score, dtype=torch.bool)
     visible_column_mask[visible_classes] = 1
-    invisible_column_mask = torch.zeros(dim_similarity, dtype=torch.bool)
+    invisible_column_mask = torch.zeros(dim_score, dtype=torch.bool)
     invisible_column_mask[invisible_classes] = 1
+    
     # Calculate metric
     #  From all classes / Over all classes
-    all_all_accuracy = mask_predict_similarity(similarity, label, row_mask=None, column_mask=None)
+    all_all_accuracy = mask_predict_score(score, label, row_mask=None, column_mask=None)
+    
     #  From visible classes / Over all classes
-    visible_all_accuracy = mask_predict_similarity(similarity, label, row_mask=visible_row_mask, column_mask=None)
+    visible_all_accuracy = mask_predict_score(score, label, row_mask=visible_row_mask, column_mask=None)
+    
     #  From invisible classes / Over all classes
-    invisible_all_accuracy = mask_predict_similarity(similarity, label, row_mask=invisible_row_mask, column_mask=None)
+    invisible_all_accuracy = mask_predict_score(score, label, row_mask=invisible_row_mask, column_mask=None)
+    
     #  From visible classes / Over visible classes
-    visible_visible_accuracy = mask_predict_similarity(similarity, label, row_mask=visible_row_mask, column_mask=visible_column_mask)
+    visible_visible_accuracy = mask_predict_score(score, label, row_mask=visible_row_mask, column_mask=visible_column_mask)
+    
     #  From invisible classes / Over invisible classes
-    invisible_invisible_accuracy = mask_predict_similarity(similarity, label, row_mask=invisible_row_mask, column_mask=invisible_column_mask)
+    invisible_invisible_accuracy = mask_predict_score(score, label, row_mask=invisible_row_mask, column_mask=invisible_column_mask)
+    
     # Package accuracies
     accuracies = {
         'All/All Accuracy': all_all_accuracy,
@@ -124,7 +131,7 @@ def evaluate_clsf(domain_info, extraction, oracle_extraction):
     labels = extraction.labels
     data_ind = extraction.data_ind
     # Calculate metric
-    metric = generate_metric(domain_info, logits, labels, data_ind)
+    metric = get_accuracies(domain_info, logits, labels, data_ind)
     return metric
 
 def evaluate_nmc(domain_info, extraction, oracle_extraction):
@@ -142,61 +149,31 @@ def evaluate_nmc(domain_info, extraction, oracle_extraction):
     normed_clz_mean = F.normalize(clz_mean, dim=1)
     similarity = torch.matmul(normed_features, normed_clz_mean.T)
     # Calculate metric
-    metric = generate_metric(domain_info, similarity, labels, data_ind)
+    metric = get_accuracies(domain_info, similarity, labels, data_ind)
     return metric
 
 
 def evaluate_lp():
     pass
 
-# TODO: Arpita: finish this methods following my other evalute methods
-def evaluate_auc(domain_info, extraction, oracle_extraction):
-    curve_results=[]
 
-    # Compute seen and unseen sample masks
-    visible_class_mask = torch.tensor([l.item() in domain_info.visible_classes for l in extraction.labels], dtype=torch.bool, device=extraction.labels.device)
-    invisible_class_mask = torch.tensor([l.item() in domain_info.invisible_classes for l in extraction.labels], dtype=torch.bool, device=extraction.labels.device)
+################################################################################
+# TODO: Refactor this part
+def _compute_accuracy(all_logits, all_labels, visible_mask, invisible_mask,
+                           chopped_out_classes=None):
+    new_all_logits = all_logits.clone()
+    if chopped_out_classes is not None:
+        new_all_logits[:, chopped_out_classes] = float('-inf')
     
-    # Increase unseen accuracy
-    logits_copy = extraction.logits.clone().to(torch.float64)
-    final = False
-    accumulate_shifting = 0.
-    while not final:
-        unseen_shifting, final = compute_shifting(
-                logits_copy, domain_info.visible_classes, domain_info.invisible_classes,
-                mode='positive')
-        logits_copy[:, domain_info.invisible_classes] += unseen_shifting
-        accumulate_shifting += unseen_shifting
-        curve_results.append(list(compute_accuracy(logits_copy, extraction.labels,
-                            visible_class_mask, invisible_class_mask)) + [accumulate_shifting])
-
-    #Increase seen accuracy
-    logits_copy = extraction.logits.clone().to(torch.float64)
-    final = False
-    accumulate_shifting = 0.
-    while not final:
-        unseen_shifting, final = compute_shifting(
-                logits_copy, domain_info.visible_classes, domain_info.invisible_classes,
-                mode='negative')
-        logits_copy[:, domain_info.invisible_classes] -= unseen_shifting
-        accumulate_shifting -= unseen_shifting
-        curve_results.append(list(compute_accuracy(logits_copy, extraction.labels,
-                            visible_class_mask, invisible_class_mask)) + [accumulate_shifting])
-        
-
-    # Get trade-off curve
-    curve_results = torch.tensor(curve_results)
-    curve_results = curve_results[torch.argsort(curve_results[:, 1])]  # Sort by seen acc.
-    trade_off_curve = curve_results[:, 1:3]
-
-    auc_score = metrics.auc(
-        trade_off_curve[:, 0].cpu().numpy() / 100.,
-        trade_off_curve[:, 1].cpu().numpy() / 100.)
+    overall_acc = (new_all_logits.argmax(dim=1) == all_labels).sum().item() / all_labels.shape[0]
     
-    return curve_results, auc_score
+    visible_acc = (new_all_logits[visible_mask].argmax(dim=1) == all_labels[visible_mask]).sum().item() / visible_mask.sum().item()
+    invisible_acc = (new_all_logits[invisible_mask].argmax(dim=1) == all_labels[invisible_mask]).sum().item() / invisible_mask.sum().item()
+    
+    return [overall_acc * 100., visible_acc * 100., invisible_acc * 100.]
 
 
-def compute_shifting(all_logits, visible_classes, invisible_classes, mode='positive'):
+def _compute_shifting(all_logits, visible_classes, invisible_classes, mode='positive'):
     assert mode in ['positive', 'negative']
 
     # Compute maximum logits for seen and unseen classes
@@ -232,22 +209,52 @@ def compute_shifting(all_logits, visible_classes, invisible_classes, mode='posit
         else:
             return first + 1., True
 
-def compute_accuracy(all_logits, all_labels, visible_mask, invisible_mask,
-                           chopped_out_classes=None):
-    new_all_logits = all_logits.clone()
-    if chopped_out_classes is not None:
-        new_all_logits[:, chopped_out_classes] = float('-inf')
+
+def _get_curve_results(domain_info, extraction):
+    curve_results=[]
+
+    # Compute seen and unseen sample masks
+    visible_class_mask = torch.tensor([l.item() in domain_info.visible_classes for l in extraction.labels], dtype=torch.bool, device=extraction.labels.device)
+    invisible_class_mask = torch.tensor([l.item() in domain_info.invisible_classes for l in extraction.labels], dtype=torch.bool, device=extraction.labels.device)
     
-    overall_acc = (new_all_logits.argmax(dim=1) == all_labels).sum().item() / all_labels.shape[0]
-    
-    seen_acc = (new_all_logits[visible_mask].argmax(dim=1) == all_labels[visible_mask]).sum().item() / visible_mask.sum().item()
-    
-    unseen_acc = (new_all_logits[invisible_mask].argmax(dim=1) == all_labels[invisible_mask]).sum().item() / invisible_mask.sum().item()
-    
-    return overall_acc * 100., seen_acc * 100., unseen_acc * 100.
+    # Increase unseen accuracy
+    logits_copy = extraction.logits.clone().to(torch.float64)
+    final = False
+    accumulate_shifting = 0.
+    logging.debug('Increasing unseen accuracy...')
+    while not final:
+        unseen_shifting, final = _compute_shifting(
+                logits_copy, domain_info.visible_classes, domain_info.invisible_classes,
+                mode='positive')
+        logits_copy[:, domain_info.invisible_classes] += unseen_shifting
+        accumulate_shifting += unseen_shifting
+        overall_acc, visible_acc, invisible_acc = _compute_accuracy(logits_copy, extraction.labels, visible_class_mask, invisible_class_mask)
+        curve_results.append([overall_acc, visible_acc, invisible_acc, accumulate_shifting])
+
+    logging.debug('Increasing seen accuracy...')
+    # Increase seen accuracy
+    logits_copy = extraction.logits.clone().to(torch.float64)
+    final = False
+    accumulate_shifting = 0.
+    while not final:
+        unseen_shifting, final = _compute_shifting(
+                logits_copy, domain_info.visible_classes, domain_info.invisible_classes,
+                mode='negative')
+        logits_copy[:, domain_info.invisible_classes] -= unseen_shifting
+        accumulate_shifting -= unseen_shifting
+        overall_acc, visible_acc, invisible_acc = _compute_accuracy(logits_copy, extraction.labels, visible_class_mask, invisible_class_mask)
+        curve_results.append([overall_acc, visible_acc, invisible_acc, accumulate_shifting])
+        
+
+    # Get trade-off curve
+    curve_results = torch.tensor(curve_results)
+    curve_results = curve_results[torch.argsort(curve_results[:, 1])]  # Sort by seen acc.
+    trade_off_curve = curve_results[:, 1:3]
+
+    return curve_results, trade_off_curve
 
 
-def evaluate_baseline_calibration(domain_info, extraction, oracle_extraction, method='baseline'):
+def evaluate_baseline_calibration(domain_info, extraction):
     wrong_visible_logits = []
     invisible_logits = []
 
@@ -265,56 +272,73 @@ def evaluate_baseline_calibration(domain_info, extraction, oracle_extraction, me
     calib_all_logits = extraction.logits.clone()
     calib_all_logits[:, domain_info.invisible_classes] += baseline_calib_factor
 
-    # Compute seen and unseen sample masks
-    visible_class_mask = torch.tensor([l.item() in domain_info.visible_classes for l in extraction.labels], dtype=torch.bool, device=extraction.labels.device)
-    invisible_class_mask = torch.tensor([l.item() in domain_info.invisible_classes for l in extraction.labels], dtype=torch.bool, device=extraction.labels.device)
-    
+    # Compute seen and unseen sample masks    
 
-    calib_all_preds = calib_all_logits.argmax(dim=1)
-    
-    overall_acc = 100 * (calib_all_preds == extraction.labels).sum().item() / extraction.labels.shape[0]
-    seen_acc = 100 * (calib_all_preds[visible_class_mask] == extraction.labels[visible_class_mask]).sum().item() / visible_class_mask.sum().item()
-    unseen_acc = 100 * (calib_all_preds[invisible_class_mask] == extraction.labels[invisible_class_mask]).sum().item() / invisible_class_mask.sum().item()
-    
-    return {'overall_acc':overall_acc,'seen_acc': seen_acc,'unseen_acc': unseen_acc}
+    # generate_accu_metric(domain_info, score, label, data_ind)
+    metric = get_accuracies(domain_info, calib_all_logits, extraction.labels, extraction.data_ind)
 
-#Ping: Input is needed: Src model unseen accuracy, but work will be made on target model. 
-def evaluate_better_calibration(domain_info, extraction, oracle_extraction, curve_results, method='better',src_unseen_acc=None):
-    if src_unseen_acc is None:
-        valid = torch.ones(curve_results.shape[0], dtype=torch.bool, device=curve_results.device)
-    else:
-        unseen_accs = curve_results[:, 2]
-        valid = unseen_accs >= src_unseen_acc
+    return metric
+
+# Ping: Input is needed: Src model unseen accuracy, but work will be made on target model. 
+def evaluate_better_calibration(domain_info, extraction, curve_results, src_unseen_acc):
+    unseen_accs = curve_results[:, 2]
+    valid = unseen_accs >= src_unseen_acc
 
     # Mask the overall accuracies based on the valid mask
     masked_overall_accs = torch.where(valid, curve_results[:, 0], torch.tensor(float('-inf'), dtype=curve_results.dtype, device=curve_results.device))
 
-
     # Find the index of the maximum masked value
     best_idx = torch.argmax(masked_overall_accs)
+    best_calib_factor = curve_results[best_idx, 3]
 
-    return curve_results[best_idx]
+    score = extraction.logits.clone()
+    score[:, domain_info.invisible_classes] += best_calib_factor
 
-def evaluate(domain_info, extraction, oracle_extraction):
+    metric = get_accuracies(domain_info, score, extraction.labels, extraction.data_ind)
+
+    return metric
+################################################################################
+
+def evaluate(domain_info, extraction, oracle_extraction, src_unseen_acc=None):
     # Evaluate the features through the classifier (regular cnn model)
+    logging.debug('Evaluating classifier...')
     clsf_metric = evaluate_clsf(domain_info, extraction, oracle_extraction)
     
     # Evaluate the features through the nearest mean classifier
+    logging.debug('Evaluating NMC...')
     nmc_metric = evaluate_nmc(domain_info, extraction, oracle_extraction)
     
     # Evaluate the features through the linear probing
+    logging.debug('Evaluating LP...')
     lp_metric = evaluate_lp()
 
-    # Evaluate AUC
-    curve_results, auc_metric = evaluate_auc(domain_info, extraction, oracle_extraction)
+    # Get curve results for calibration
+    logging.debug('Evaluating calibration...')
+    logging.debug('Getting curve results...')
+    curve_results, trade_off_curve = _get_curve_results(domain_info, extraction)
+
+    logging.debug('Calculating AUC...')
+    auc_score = metrics.auc(trade_off_curve[:, 0].cpu().numpy() / 100., trade_off_curve[:, 1].cpu().numpy() / 100.)
+    auc_metric = {
+        'AUC': {
+            '-': auc_score
+        }
+    }
 
     # Evaluate baseline calibration
-    baseline_calibration_metric = evaluate_baseline_calibration(domain_info, extraction, oracle_extraction)
+    logging.debug('Evaluating baseline calibration...')
+    baseline_calibration_metric = evaluate_baseline_calibration(domain_info, extraction)
 
-    # Evaluate better calibration
-    better_calibration_metric = evaluate_better_calibration(domain_info, extraction, oracle_extraction, curve_results, method='better')
+    if src_unseen_acc is not None:
+        # Evaluate better calibration
+        logging.debug('Evaluating better calibration...')
+        better_calibration_metric = evaluate_better_calibration(domain_info, extraction, curve_results, src_unseen_acc)
+    else:
+        logging.debug('Better calibration is not evaluated because source unseen accuracy is not provided. ')
+        better_calibration_metric = None
 
     # Package evaluation
+    logging.debug('Packaging evaluation...')
     evaluation_metric = {
         'Classifier Accuracy': clsf_metric,
         'NMC Accuracy': nmc_metric,
@@ -323,6 +347,6 @@ def evaluate(domain_info, extraction, oracle_extraction):
         'Baseline Calibration': baseline_calibration_metric,
         'Better Calibration': better_calibration_metric
     }
-    #PING: Have to see what to return from other functions so that we can generate tables.
     evaluation = Evaluation(domain_info, extraction, evaluation_metric)
+
     return evaluation

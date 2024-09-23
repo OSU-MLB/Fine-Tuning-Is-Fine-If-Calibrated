@@ -35,30 +35,47 @@ class DomainInfo:
     
     def __repr__(self):
         return f'DomainInfo(all_classes={self.all_classes}, visible_classes={self.visible_classes}, invisible_classes={self.invisible_classes}, num_classes={self.num_classes})'
+    
+    def __str__(self):
+        return self.__repr__()
 
+
+class IndexedDatasetWrapper(Dataset):
+    
+        def __init__(self, dataset: Dataset):
+            self.dataset = dataset
+    
+        def __getitem__(self, index):
+            return index, self.dataset[index]
+    
+        def __len__(self):
+            return len(self.dataset)
+        
+        def __getattr__(self, name):
+            return getattr(self.dataset, name)
+        
+        def __setattr__(self, name, value):
+            if name == 'dataset':
+                self.__dict__[name] = value
+            else:
+                setattr(self.dataset, name, value)
 
 class PartialDomainDataset(Dataset):
 
     def __init__(self, dataset: Dataset, domain_info: DomainInfo):
-        start = time.time()
-        _valid = self._check_dataset_format(dataset)
-        assert _valid, 'PartialDomainDataset only supports dataset with (data, target) format. '
+        # start = time.time()
+        self._check_dataset_format(dataset)
 
-        self.dataset = self._make_ordered_dataset(dataset)
+        self.dataset = IndexedDatasetWrapper(dataset)
         self.domain_info = copy.deepcopy(domain_info)
         self._iterate_ind = None
         self.visible_ind = None
         self.invisible_ind = None
         self.all_ind = None
         self._init_indices()
-        end = time.time()
-        logging.info(f'PartialDomainDataset init time: {end - start:.3f} s. ')
+        # end = time.time()
+        # logging.info(f'PartialDomainDataset init time: {end - start:.3f} s. ')
 
-    def _make_ordered_dataset(self, dataset):
-        ordered_dataset = []
-        for i, (data, target) in enumerate(dataset):
-            ordered_dataset.append((i, (data, target),))
-        return ordered_dataset
 
     def visible_mask(self, ind):
         mask = torch.isin(ind, self.visible_ind)
@@ -70,8 +87,8 @@ class PartialDomainDataset(Dataset):
 
     def _check_dataset_format(self, dataset):
         _sample = dataset[0]
-        valid = isinstance(_sample, tuple) and len(_sample) == 2
-        return valid
+        assert isinstance(_sample, tuple) and len(_sample) == 2, 'PartialDomainDataset only supports dataset with (data, target) format. '
+        assert hasattr(dataset, 'targets'), 'PartialDomainDataset only supports dataset with targets field. '
 
     def _init_indices(self):
         logging.debug('Initializing indices... ')
@@ -82,7 +99,7 @@ class PartialDomainDataset(Dataset):
         invisible_ind = []
         all_ind = []
         labels = []
-        for i, (_, _c) in self.dataset:
+        for i, _c in enumerate(self.dataset.targets):
             if _c in visible_classes:
                 visible_ind.append(i)
             elif _c in invisible_classes:
