@@ -27,17 +27,20 @@ def _precheck_arguments(args):
     
     # Check seen classes
     if args.dataset == 'OfficeHome':
-        if args.n_seen_classes is None:
-            args.n_seen_classes = C.OFFICEHOME_DEFAULT_N_SEEN_CLASSES
-        assert 0 < args.n_seen_classes <= C.OFFICEHOME_N_CLASSES, f"Number of seen classes should be in (0, {C.OFFICEHOME_N_CLASSES}]. "
+        if args.n_visible_classes is None:
+            args.n_visible_classes = C.OFFICEHOME_DEFAULT_N_VISIBLE_CLASSES
+        if args.n_invisible_classes is None:
+            args.n_invisible_classes = C.OFFICEHOME_DEFAULT_N_INVISIBLE_CLASSES
     elif args.dataset == 'ImageNet' and args.target == 'R':
-        if args.n_seen_classes is None:
-            args.n_seen_classes = C.IMAGENET_R_DEFAULT_N_SEEN_CLASSES
-        assert 0 < args.n_seen_classes <= C.IMAGENET_R_N_CLASSES, f"Number of seen classes should be in (0, {C.IMAGENET_R_N_CLASSES}]. "
+        if args.n_visible_classes is None:
+            args.n_visible_classes = C.IMAGENET_R_DEFAULT_N_VISIBLE_CLASSES
+        if args.n_invisible_classes is None:
+            args.n_invisible_classes = C.IMAGENET_R_DEFAULT_N_INVISIBLE_CLASSES
     elif args.dataset == 'ImageNet' and args.target == 'S':
-        if args.n_seen_classes is None:
-            args.n_seen_classes = C.IMAGENET_S_DEFAULT_N_SEEN_CLASSES
-        assert 0 < args.n_seen_classes <= C.IMAGENET_S_N_CLASSES, f"Number of seen classes should be in (0, {C.IMAGENET_S_N_CLASSES}]. "
+        if args.n_visible_classes is None:
+            args.n_visible_classes = C.IMAGENET_S_DEFAULT_N_VISIBLE_CLASSES
+        if args.n_invisible_classes is None:
+            args.n_invisible_classes = C.IMAGENET_S_DEFAULT_N_INVISIBLE_CLASSES
 
     # Check if source is None for ImageNet dataset
     if args.dataset == 'ImageNet':
@@ -84,15 +87,18 @@ def parse_arguments():
     parser.add_argument('--eval', action='store_true', help='Evaluate the model')
     parser.add_argument('--eval_model_path', type=str, default=None)
     parser.add_argument('--workers', default=1, type=int)
+    parser.add_argument('--n_visible_classes', type=int, default=None)
+    parser.add_argument('--visible_classes', type=str, choices=['hardcoded', 'random'], default='hardcoded')
+    parser.add_argument('--n_invisible_classes', type=int, default=0)
     args, _ = parser.parse_known_args()
+    parser.add_argument('--cross_val_config', type=str, default=None)
     if args.dataset == 'OfficeHome':
         parser.add_argument('--batch_size', default=64, type=int)
         parser.add_argument('--arch', default='resnet50')
         parser.add_argument('--model_config',
                             default='{"loss_type":"cross-entropy","loss_scope":"all","dropout":0.1,"freeze_classifier":false,"freeze_bn":false,"freeze_backbone":false}')
         parser.add_argument('--training_config',
-                            default='{"epochs":20,"iterations":500,"save_every":1,"evaluate_freq":0.2}')
-        parser.add_argument('--n_seen_classes', type=int, default=None)
+                            default='{"epochs":20,"iterations":500,"save_every":1,"evaluate_freq":-1}')
         parser.add_argument('--optimizer', type=str, default='SGD')
         parser.add_argument('--optimizer_parameters', type=str,
                             default='{"lr":1e-3,"weight_decay":5e-4,"momentum":0.9,"nesterov":true}')
@@ -103,8 +109,7 @@ def parse_arguments():
         parser.add_argument('--model_config',
                             default='{"loss_type":"cross-entropy","loss_scope":"all","dropout":0.1,"freeze_classifier":false,"freeze_bn":false,"freeze_backbone":false}')
         parser.add_argument('--training_config',
-                            default='{"epochs":50,"iterations":500,"save_every":1,"evaluate_freq":0.2}')
-        parser.add_argument('--n_seen_classes', type=int, default=None)
+                            default='{"epochs":50,"iterations":500,"save_every":1,"evaluate_freq":-1}')
         parser.add_argument('--optimizer', type=str, default='SGD')
         parser.add_argument('--optimizer_parameters', type=str,
                             default='{"lr":1e-3,"weight_decay":1e-4,"momentum":0.9,"nesterov":true}')

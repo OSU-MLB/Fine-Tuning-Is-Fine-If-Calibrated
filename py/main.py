@@ -26,7 +26,7 @@ class HolisticTransfer:
 
         def _f(_self):
             logging.info('Evaluating after epoch... ')
-            evaluation = _self.evaluate()            
+            evaluation = _self.evaluate()          
             for k, _evaluation in evaluation.items():
                 logging.debug(f'\n{k} Evaluation: \n{_evaluation}')
                 epoch = _self.state['next_epoch']
@@ -64,12 +64,15 @@ def main(args):
     arch = args.arch
     serialization_config = args.serialization_config
     model_config = args.model_config
-    n_seen_classes = args.n_seen_classes
+    n_visible_classes = args.n_visible_classes
+    visible_classes = args.visible_classes
+    n_invisible_classes = args.n_invisible_classes
     batch_size = args.batch_size
     workers = args.workers
     optimizer_type = args.optimizer
     optimizer_parameters = args.optimizer_parameters
     training_config = args.training_config
+    cross_val_config = args.cross_val_config
     debug = args.debug
 
     # Construct experiment space
@@ -82,12 +85,13 @@ def main(args):
                              source=source,
                              target=target,
                              model_config=model_config,
-                             n_seen_classes=n_seen_classes,
+                             n_visible_classes=n_visible_classes,
+                             visible_classes=visible_classes,
+                             n_invisible_classes=n_invisible_classes,
                              optimizer=optimizer_type,
                              optimizer_parameters=optimizer_parameters,
                              seed=seed, 
                              debug=debug)
-
 
     # Unpack model config
     loss_type = model_config['loss_type']
@@ -111,16 +115,15 @@ def main(args):
     training_data = dataset.get_dataset(dataset_name, target, 'training')
     logging.info(f'Loading {dataset_name} testing dataset... ')
     testing_data = dataset.get_dataset(dataset_name, target, 'testing')
-    training_data_size = len(training_data)
 
-    logging.info('Getting visible classes... ')
-    # Import hard coded values used in paper
+    # Get visible and invisible classes
+    logging.info('Getting visible and invisible classes... ')
     from . import HT_HARDCODED as HC
-    num_classes, all_classes, visible_classes = HC.GET_VISIBLE_CLASSES(dataset_name, source, target, n_seen_classes)
+    num_classes, all_classes, visible_classes, invisible_classes = HC.GET_HARDCODED_CLASSES(dataset_name, source, target, n_visible_classes, n_invisible_classes, visible_classes=visible_classes)
 
     # Create data loaders
     logging.info('Creating domain info... ')
-    domain_info = data_api.DomainInfo(all_classes, visible_classes, num_classes=num_classes)
+    domain_info = data_api.DomainInfo(all_classes, visible_classes, invisible_classes=invisible_classes, num_classes=num_classes)
     logging.info(f'Domain info: {domain_info}')
     
     logging.info('Creating partial domain training dataset... ')
@@ -158,7 +161,7 @@ def main(args):
         trainer = train.PartialDomainTrainer(model, optimizer, loss_type, loss_scope, device)
         trainer.set_training_loader(training_loader)
         trainer.add_val_loader('testing', testing_loader)
-        trainer.set_training_config(training_config)
+        trainer.set_training_config(training_config, cross_val_config)
 
         # Create HT instance
         logging.info(f'Creating HolisticTransfer instance... ')
@@ -186,7 +189,7 @@ def main(args):
         trainer = train.PartialDomainTrainer(model, optimizer, loss_type, loss_scope, device)
         trainer.set_training_loader(training_loader)
         trainer.add_val_loader('testing', testing_loader)
-        trainer.set_training_config(training_config)
+        trainer.set_training_config(training_config, cross_val_config)
 
         # Create HT instance
         logging.info(f'Creating HolisticTransfer instance... ')

@@ -34,4 +34,7 @@ python -m py.main --eval --device "cuda:0" --dataset "OfficeHome" --source "Rw" 
 
 python -m py.main --eval --device "cuda:0" --dataset "ImageNet" --target "R" --eval_model_path out/paper_ckpt/ImageNet/ImageNet-R.pth
 python -m py.main --eval --device "cuda:0" --dataset "ImageNet" --target "S" --eval_model_path out/paper_ckpt/ImageNet/ImageNet-S.pth
+
+Evaluation (Cross-Val)
+python -m py.main --eval --device "cuda:0" --dataset "OfficeHome" --source "Ar" --target "Rw" --eval_model_path out/paper_ckpt/OfficeHome/Ar_Rw.pth --cross_val_config "asset/OfficeHome/cross_val_config/Ar_Rw.json"
 ```

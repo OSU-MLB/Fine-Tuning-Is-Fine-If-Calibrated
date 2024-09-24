@@ -109,7 +109,6 @@ class PartialDomainDataset(Dataset):
         self.visible_ind = visible_ind
         self.invisible_ind = invisible_ind
         self.all_ind = all_ind
-        assert len(self.visible_ind) + len(self.invisible_ind) == len(self.dataset), 'Visible and invisible indices do not match the dataset. '
         self._iterate_ind = self.visible_ind
         domain_info.visible_ind = torch.tensor(self.visible_ind)
         domain_info.invisible_ind = torch.tensor(self.invisible_ind)

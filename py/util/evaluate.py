@@ -280,7 +280,7 @@ def evaluate_baseline_calibration(domain_info, extraction):
     return metric
 
 # Ping: Input is needed: Src model unseen accuracy, but work will be made on target model. 
-def evaluate_better_calibration(domain_info, extraction, curve_results, src_unseen_acc):
+def evaluate_better_calibration(domain_info, extraction, curve_results, src_unseen_acc, cross_val_extraction):
     unseen_accs = curve_results[:, 2]
     valid = unseen_accs >= src_unseen_acc
 
@@ -299,7 +299,7 @@ def evaluate_better_calibration(domain_info, extraction, curve_results, src_unse
     return metric
 ################################################################################
 
-def evaluate(domain_info, extraction, oracle_extraction, src_unseen_acc=None):
+def evaluate(domain_info, extraction, oracle_extraction, src_unseen_acc=None, cross_val_extraction=None):
     # Evaluate the features through the classifier (regular cnn model)
     logging.debug('Evaluating classifier...')
     clsf_metric = evaluate_clsf(domain_info, extraction, oracle_extraction)
@@ -317,6 +317,7 @@ def evaluate(domain_info, extraction, oracle_extraction, src_unseen_acc=None):
     logging.debug('Getting curve results...')
     curve_results, trade_off_curve = _get_curve_results(domain_info, extraction)
 
+    # Evaluate AUC
     logging.debug('Calculating AUC...')
     auc_score = metrics.auc(trade_off_curve[:, 0].cpu().numpy() / 100., trade_off_curve[:, 1].cpu().numpy() / 100.)
     auc_metric = {
@@ -329,13 +330,9 @@ def evaluate(domain_info, extraction, oracle_extraction, src_unseen_acc=None):
     logging.debug('Evaluating baseline calibration...')
     baseline_calibration_metric = evaluate_baseline_calibration(domain_info, extraction)
 
-    if src_unseen_acc is not None:
-        # Evaluate better calibration
-        logging.debug('Evaluating better calibration...')
-        better_calibration_metric = evaluate_better_calibration(domain_info, extraction, curve_results, src_unseen_acc)
-    else:
-        logging.debug('Better calibration is not evaluated because source unseen accuracy is not provided. ')
-        better_calibration_metric = None
+    # Evaluate better calibration
+    logging.debug('Evaluating better calibration...')
+    better_calibration_metric = evaluate_better_calibration(domain_info, extraction, curve_results, src_unseen_acc, cross_val_extraction)
 
     # Package evaluation
     logging.debug('Packaging evaluation...')

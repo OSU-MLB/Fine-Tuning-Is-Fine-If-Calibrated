@@ -110,14 +110,16 @@ class PathTree:
 
 
 class Serialization:
-    def __init__(self, base_path, dataset, arch, source, target, n_seen_classes, model_config, optimizer,
+    def __init__(self, base_path, dataset, arch, source, target, n_visible_classes, visible_classes, n_invisible_classes, model_config, optimizer,
                  optimizer_parameters, seed):
         self.base_path = base_path
         self.dataset = str(dataset)
         self.arch = str(arch)
         self.source = str(source)
         self.target = str(target)
-        self.n_seen_classes = str(n_seen_classes)
+        self.n_visible_classes = str(n_visible_classes)
+        self.visible_classes = str(visible_classes)
+        self.n_invisible_classes = str(n_invisible_classes)
         self.model_config = str(model_config)
         self.optimizer = str(optimizer)
         self.optimizer_parameters = str(optimizer_parameters)
@@ -126,8 +128,7 @@ class Serialization:
 
     @property
     def path(self):
-        return os.path.join(self.base_path, self.dataset, self.arch, self.source, self.target, self.n_seen_classes, 
-                            self.model_config, self.optimizer, self.optimizer_parameters, self.seed)
+        return os.path.join(self.base_path, self.dataset, self.arch, self.source, self.target, self.n_visible_classes, self.visible_classes, self.n_invisible_classes, self.model_config, self.optimizer, self.optimizer_parameters, self.seed)
 
     @property
     def source_path(self):
@@ -144,18 +145,20 @@ class Serialization:
         arch = s[1]
         source = s[2]
         target = s[3]
-        n_seen_classes = s[4]
-        model_config = s[5]
-        optimizer = s[6]
-        optimizer_parameters = s[7]
-        seed = s[8]
-        return dataset, arch, source, target, n_seen_classes, model_config, optimizer, optimizer_parameters, seed
+        n_visible_classes = s[4]
+        visible_classes = s[5]
+        n_invisible_classes = s[6]
+        model_config = s[7]
+        optimizer = s[8]
+        optimizer_parameters = s[9]
+        seed = s[10]
+        return dataset, arch, source, target, n_visible_classes, visible_classes, n_invisible_classes, model_config, optimizer, optimizer_parameters, seed
 
     @staticmethod
     def from_path(CLS, base_path, path):
-        dataset, arch, source, target, n_seen_classes, model_config, optimizer, optimizer_parameters, seed = Serialization.parse_path(
+        dataset, arch, source, target, n_visible_classes, visible_classes, n_invisble_classes, model_config, optimizer, optimizer_parameters, seed = Serialization.parse_path(
             path)
-        return CLS(base_path, dataset, arch, source, target, n_seen_classes, model_config, optimizer,
+        return CLS(base_path, dataset, arch, source, target, n_visible_classes, visible_classes, n_invisble_classes, model_config, optimizer,
                    optimizer_parameters, seed)
 
     def create(self):
@@ -163,7 +166,7 @@ class Serialization:
         common.makedirs(self.path)
 
     def __str__(self):
-        return f'Dataset: {self.dataset}, Arch: {self.arch}, Source: {self.source}, Target: {self.target}, N Seen Classes: {self.n_seen_classes}, Model Config: {self.model_config}, Optimizer: {self.optimizer}, Optimizer Parameters: {self.optimizer_parameters}, Seed: {self.seed}'
+        return f'Dataset: {self.dataset}, Arch: {self.arch}, Source: {self.source}, Target: {self.target}, N Visible Classes: {self.n_visible_classes}, Visible Classes: {self.visible_classes}, N Invisible Classes: {self.n_invisible_classes}, Model Config: {self.model_config}, Optimizer: {self.optimizer}, Optimizer Parameters: {self.optimizer_parameters}, Seed: {self.seed}'
 
     def __repr__(self):
         return self.__str__()
@@ -265,7 +268,9 @@ class SerializationSpace:
         self.instances['arch'][instance.arch].add(instance)
         self.instances['source'][instance.source].add(instance)
         self.instances['optimizer_parameters'][instance.optimizer_parameters].add(instance)
-        self.instances['n_seen_classes'][instance.n_seen_classes].add(instance)
+        self.instances['n_visible_classes'][instance.n_visible_classes].add(instance)
+        self.instances['visible_classes'][instance.visible_classes].add(instance)
+        self.instances['n_invisible_classes'][instance.n_invisible_classes].add(instance)
         self.instances['seed'][instance.seed].add(instance)
         self.instances['target'][instance.target].add(instance)
 
@@ -311,8 +316,8 @@ class ExperimentSpace(SerializationSpace):
     def instance_from_path(self, path):
         return Serialization.from_path(Experiment, self.base_path, path)
     
-    def start(self, dataset, arch, source, target, model_config, n_seen_classes, optimizer, optimizer_parameters, seed, debug):
-        instance = Experiment(self.base_path, dataset, arch, source, target, n_seen_classes, model_config, optimizer, optimizer_parameters, seed)
+    def start(self, dataset, arch, source, target, model_config, n_visible_classes, visible_classes, n_invisible_classes, optimizer, optimizer_parameters, seed, debug):
+        instance = Experiment(self.base_path, dataset, arch, source, target, n_visible_classes, visible_classes, n_invisible_classes, model_config, optimizer, optimizer_parameters, seed)
         if not instance.exists:
             instance.create()
         self.add(instance)

@@ -6,12 +6,13 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from ..data import common as data_util
 from ..util import evaluate
+from ..util import common
+import time
 
 class PartialDomainTrainer:
 
     def __init__(self, model, optimizer, loss_type, loss_scope, device):
         self.model = model.to(device)
-        self.src_training_extraction = None
         self.src_model = copy.deepcopy(model)
         self.optimizer = optimizer
         self.device = device
@@ -23,17 +24,12 @@ class PartialDomainTrainer:
         self.training_iterator = None
         self.val_loaders = {}
         self.training_config = None
+        self.cross_val_config = None
+        self.cross_val_extraction = None
         self._inited = False
 
 
-    def _f_loss(self, loss_type, loss_scope, domain_info):
-        # Unpack domain info
-        visible_classes = domain_info.visible_classes
-        num_classes = domain_info.num_classes
-        
-        # Visible and invisible inds
-        dataset = self.training_loader.dataset
-
+    def _f_loss(self, loss_type, loss_scope):
         # Define loss function
         if loss_type == 'cross-entropy':
             _f = F.cross_entropy
@@ -42,20 +38,25 @@ class PartialDomainTrainer:
         if loss_scope == 'all':
             def _loss(logits, y):
                 return _f(logits, y)
-        # TODO: Rewrite this part
-        # elif loss_scope == 'seen':
-        #     def _loss(logits, y, ind_order):
-        #         visible_mask = dataset.visible_mask(ind_order)
-        #         logits = logits[visible_mask]
-        #         y = y[visible_mask]
-        #         return _f(logits, y)
         return _loss
 
-    def set_training_config(self, training_config):
+    def _init_cross_val(self):
+        if self.cross_val_config is None:
+            return
+        cross_val_config = self.cross_val_config
+        extraction = []
+        for extraction_path in cross_val_config['cross_val_config']:
+            _extraction = common.torch_load(extraction_path)
+            extraction.append(_extraction)
+        self.cross_val_extraction = extraction
+
+    def set_training_config(self, training_config, cross_val_config):
         # Check if the trainer has been initialized
         assert not self._inited, 'Trainer has already been initialized. '
         assert self.training_loader is not None, 'training_loader must be set before setting training_config. '
         self.training_config = training_config
+        self.cross_val_config = cross_val_config
+        self._init_cross_val()
 
         # Initialize state
         state = {}
@@ -70,13 +71,8 @@ class PartialDomainTrainer:
         state['lr_scheduler'] = lr_scheduler
         self.state = state
 
-        # Initialize data and domain info
-        training_loader = self.training_loader
-        training_data = training_loader.dataset
-        domain_info = training_data.domain_info
-
         # Initialize loss function
-        _loss = self._f_loss(self.loss_type, self.loss_scope, domain_info)
+        _loss = self._f_loss(self.loss_type, self.loss_scope)
         self.f_loss = _loss
 
         # Set _inited flag
@@ -104,7 +100,7 @@ class PartialDomainTrainer:
         dataset.set_scope('all')
         dataset.eval()
 
-        src_training_pred, training_labels, training_data_ind = self.extract_pred(loader, model=self.src_model)
+        src_training_pred, training_labels, _ = self.extract_pred(loader, model=self.src_model)
 
         domain_info = dataset.domain_info
         invisible_mask = torch.isin(training_labels, domain_info.invisible_classes)
@@ -115,6 +111,10 @@ class PartialDomainTrainer:
 
 
     def _training_iteration(self):
+        start = time.time()
+
+        # Set model, dataset and optimizer
+        logging.debug('Setting model, dataset and optimizer... ')
         state = self.state
         self.model.train()
         dataset = self.training_loader.dataset
@@ -122,18 +122,40 @@ class PartialDomainTrainer:
         dataset.set_scope('visible')
         optimizer = self.optimizer
         training_iterator = self.training_iterator
+        t1 = time.time()
+        logging.debug(f'Setup time: {t1 - start:.3f} s. ')
+
+        # Set device
+        logging.debug('Setting device... ')
         _, (X, y) = next(training_iterator)
         X = X.to(self.device)
         y = y.to(self.device)
         logging.debug(f'X shape: {X.shape}, y shape: {y.shape}. ')
         logging.debug(f'Label of training iteration: {y}. ')
         state['n_data_epoch'] += len(y)
-        # _, logits, labels = self.extract_batch(X, y)
+        t2 = time.time()
+        logging.debug(f'Device setup time: {t2 - t1:.3f} s. ')
+        
+        # Extract batch
+        logging.debug('Extracting batch... ')
         logits, _, labels = self.extract_batch(X, y)
+        t3 = time.time()
+        logging.debug(f'Extraction time: {t3 - t2:.3f} s. ')
+
+        # Compute loss
+        logging.debug('Computing loss... ')
         loss = self.f_loss(logits, labels)
+        t4 = time.time()
+        logging.debug(f'Loss computation time: {t4 - t3:.3f} s. ')
+
+        # Backward and optimize
+        logging.debug('Backward and optimize... ')
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+        t5 = time.time()
+        logging.debug(f'Backward and optimize time: {t5 - t4:.3f} s. ')
+        logging.debug(f'Training iteration time: {t5 - start:.3f} s. ')
 
 
     def extract_batch(self, X, y, model=None):
@@ -201,12 +223,11 @@ class PartialDomainTrainer:
         training_loader = self.training_loader
         training_dataset = training_loader.dataset
         domain_info = training_dataset.domain_info
-        src_training_extraction = self.src_training_extraction
         model = self.model
         model.eval()
         training_dataset.eval()
 
-        # Extract training oracle features
+        # Extract oracle training features
         training_dataset.set_scope('all')
         logging.debug('Validating on training oracle data...')
         with torch.no_grad():
@@ -248,6 +269,7 @@ class PartialDomainTrainer:
     def evaluate_and_save(self):
         # Overwrite this method to save evaluation results
         return self.evaluate()
+    
 
     def print_evaluate(self):
         eval_result = self.evaluate()
@@ -265,14 +287,22 @@ class PartialDomainTrainer:
         iterations = state['iterations']
         training_config = self.training_config
         eval_freq = training_config['evaluate_freq']
-        eval_every = max(1, int(iterations * eval_freq))
+        if eval_freq == -1:
+            eval_every = iterations + 1
+        else:
+            eval_every = max(1, int(iterations * eval_freq))
         logging.debug(f'Evaluation frequency: {eval_every}. ')
         
+        # Pre-training evaluation
+        logging.info('Pre-training evaluation... ')
+        self.print_evaluate()
+
+        # Training loop
         for epoch in range(state['next_epoch'], epochs):
             state['n_data_epoch'] = 0
             for iteration in range(state['next_iteration'], iterations):
                 # Evaluation
-                if iteration % eval_every == 0:
+                if iteration > 0 and iteration % eval_every == 0:
                     logging.info(f'Epoch {epoch}, iteration {iteration}, pre-evaluation... ')
                     self.print_evaluate()
                     
