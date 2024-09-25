@@ -73,12 +73,10 @@ def download_data(root: str, file_name: str, archive_name: str, url_link: str):
         except Exception:
             raise Exception(f"Fail to download {archive_name} from url link {url_link}. ")
 
-def torch_load(file_name):
+def torch_load(file_name, map_location=None):
     level = logging.getLogger().level
-    if level == logging.DEBUG:
-        logging.debug(f'Not loading {file_name} in debug mode. ')
-        return None
-    return torch.load(file_name)
+    f = torch.load(file_name, map_location=map_location)
+    return f
 
 def torch_save(obj, file_name):
     level = logging.getLogger().level
@@ -109,3 +107,7 @@ class DummyContext:
     def __exit__(self, *args):
         pass
 
+
+def print_metrics(self, metrics):
+    for _k, _r in metrics.items():
+        logging.info(f'{_k} metrics: \n{_r}')

@@ -89,7 +89,7 @@ def parse_arguments():
     parser.add_argument('--workers', default=1, type=int)
     parser.add_argument('--n_visible_classes', type=int, default=None)
     parser.add_argument('--visible_classes', type=str, choices=['hardcoded', 'random'], default='hardcoded')
-    parser.add_argument('--n_invisible_classes', type=int, default=0)
+    parser.add_argument('--n_invisible_classes', type=int, default=None)
     args, _ = parser.parse_known_args()
     parser.add_argument('--cross_val_config', type=str, default=None)
     if args.dataset == 'OfficeHome':

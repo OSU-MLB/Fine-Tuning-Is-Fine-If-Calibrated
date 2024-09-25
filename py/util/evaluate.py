@@ -5,6 +5,7 @@ import prettytable
 import numpy as np
 from sklearn import metrics
 import logging
+import time
 
 from . import math
 
@@ -159,6 +160,7 @@ def evaluate_lp():
 
 ################################################################################
 # TODO: Refactor this part
+
 def _compute_accuracy(all_logits, all_labels, visible_mask, invisible_mask,
                            chopped_out_classes=None):
     new_all_logits = all_logits.clone()
@@ -211,12 +213,16 @@ def _compute_shifting(all_logits, visible_classes, invisible_classes, mode='posi
 
 
 def _get_curve_results(domain_info, extraction):
+    start = time.time()
     curve_results=[]
 
     # Compute seen and unseen sample masks
     visible_class_mask = torch.tensor([l.item() in domain_info.visible_classes for l in extraction.labels], dtype=torch.bool, device=extraction.labels.device)
     invisible_class_mask = torch.tensor([l.item() in domain_info.invisible_classes for l in extraction.labels], dtype=torch.bool, device=extraction.labels.device)
     
+    t1 = time.time()
+    logging.debug(f'Compute masks: {t1 - start:.4f} seconds')
+
     # Increase unseen accuracy
     logits_copy = extraction.logits.clone().to(torch.float64)
     final = False
@@ -231,25 +237,39 @@ def _get_curve_results(domain_info, extraction):
         overall_acc, visible_acc, invisible_acc = _compute_accuracy(logits_copy, extraction.labels, visible_class_mask, invisible_class_mask)
         curve_results.append([overall_acc, visible_acc, invisible_acc, accumulate_shifting])
 
+    t2 = time.time()
+    logging.debug(f'Increase unseen accuracy: {t2 - t1:.4f} seconds')
+
     logging.debug('Increasing seen accuracy...')
     # Increase seen accuracy
     logits_copy = extraction.logits.clone().to(torch.float64)
     final = False
     accumulate_shifting = 0.
     while not final:
+        shifting_start = time.time()
         unseen_shifting, final = _compute_shifting(
                 logits_copy, domain_info.visible_classes, domain_info.invisible_classes,
                 mode='negative')
+        shifting_end = time.time()
         logits_copy[:, domain_info.invisible_classes] -= unseen_shifting
         accumulate_shifting -= unseen_shifting
+        logging.debug(f'Compute shifting: {shifting_end - shifting_start:.4f} seconds, unseen_shifting: {unseen_shifting}, accumulate_shifting: {accumulate_shifting}')
         overall_acc, visible_acc, invisible_acc = _compute_accuracy(logits_copy, extraction.labels, visible_class_mask, invisible_class_mask)
         curve_results.append([overall_acc, visible_acc, invisible_acc, accumulate_shifting])
-        
+    
+    t3 = time.time()
+    logging.debug(f'Increase seen accuracy: {t3 - t2:.4f} seconds')
 
     # Get trade-off curve
     curve_results = torch.tensor(curve_results)
     curve_results = curve_results[torch.argsort(curve_results[:, 1])]  # Sort by seen acc.
     trade_off_curve = curve_results[:, 1:3]
+
+    t4 = time.time()
+    logging.debug(f'Get trade-off curve: {t4 - t3:.4f} seconds')
+
+    end = time.time()
+    logging.debug(f'Total time: {end - start:.4f} seconds')
 
     return curve_results, trade_off_curve
 
@@ -281,6 +301,7 @@ def evaluate_baseline_calibration(domain_info, extraction):
 
 # Ping: Input is needed: Src model unseen accuracy, but work will be made on target model. 
 def evaluate_better_calibration(domain_info, extraction, curve_results, src_unseen_acc, cross_val_extraction):
+    import pdb; pdb.set_trace()
     unseen_accs = curve_results[:, 2]
     valid = unseen_accs >= src_unseen_acc
 

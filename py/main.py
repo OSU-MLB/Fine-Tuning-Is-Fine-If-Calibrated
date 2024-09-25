@@ -11,6 +11,7 @@ from .serialization.local import ExperimentSpace
 from .util import cmd as cmd_util
 from .util import model as model_util
 from .workflow import train
+from .util import common
 
 
 class HolisticTransfer:
@@ -21,14 +22,14 @@ class HolisticTransfer:
         self.serialization_config = serialization_config
         self.wrapped = False
 
-    def _f_evaluate_and_save(self):
+    def _f_evaluate_print_save(self):
         experiment = self.experiment
 
         def _f(_self):
             logging.info('Evaluating after epoch... ')
-            evaluation = _self.evaluate()          
+            evaluation = _self.evaluate()
+            common.print_metrics(evaluation)
             for k, _evaluation in evaluation.items():
-                logging.debug(f'\n{k} Evaluation: \n{_evaluation}')
                 epoch = _self.state['next_epoch']
                 logging.info(f'Saving evaluation for {k}... ')
                 experiment.save_checkpoint(f'evaluation/{k}', epoch, _evaluation)
@@ -37,20 +38,20 @@ class HolisticTransfer:
 
         return _f
 
-    def _wrap_evaluate_and_save(self):
+    def _wrap_evaluate_print_save(self):
         if self.wrapped:
             return
         trainer = self.trainer
-        f = self._f_evaluate_and_save()
-        trainer.evaluate_and_save = f.__get__(trainer, train.PartialDomainTrainer)
+        f = self._f_evaluate_print_save()
+        trainer.evaluate_print_save = f.__get__(trainer, train.PartialDomainTrainer)
         self.wrapped = True
 
     def fit(self):
-        self._wrap_evaluate_and_save()
+        self._wrap_evaluate_print_savee()
         self.trainer.fit()
 
     def evaluate(self):
-        self.trainer.print_evaluate()
+        self.trainer.evaluate_print()
 
 
 def main(args):
