@@ -6,6 +6,13 @@ OUT_DIR_NAME = 'out'
 EXPERIMENT_DIR_NAME = 'experiment'
 EXPERIMENT_PATH = os.path.join(OUT_DIR_NAME, EXPERIMENT_DIR_NAME)
 
+# Path Constants
+SOURCE_EPOCH = -1
+MODEL_CKPT_PATH = 'model'
+EVALUATION_CKPT_PATH = 'evaluation'
+ORACLE_TRAINING_EVALUATION_CKPT_PATH = os.path.join(EVALUATION_CKPT_PATH, 'oracle_training')
+TESTING_EVALUATION_CKPT_PATH = os.path.join(EVALUATION_CKPT_PATH, 'testing')
+
 # Setting
 EVALUATE_TOP_K = (1, 5)
 

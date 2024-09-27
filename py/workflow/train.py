@@ -25,8 +25,7 @@ class PartialDomainTrainer:
         self.training_iterator = None
         self.val_loaders = {}
         self.training_config = None
-        self.cross_val_config = None
-        self.cross_val_extraction = None
+        self.cv_evaluation = None
         self._inited = False
 
 
@@ -41,24 +40,37 @@ class PartialDomainTrainer:
                 return _f(logits, y)
         return _loss
 
-    def _init_cross_val(self):
-        if self.cross_val_config is None:
-            return
-        cross_val_config = self.cross_val_config
-        extraction = []
-        for extraction_path in cross_val_config['cv_ckpts']:
-            _extraction = common.torch_load(extraction_path, map_location=self.device)
-            extraction.append(_extraction)
-        self.cross_val_extraction = extraction
+    # def _init_cross_val(self):
+    #     if self.cross_val_config is None:
+    #         return
+    #     cross_val_config = self.cross_val_config
+    #     extraction = []
+    #     # for extraction_path in cross_val_config['cv_ckpts']:
+    #     #     _extraction = common.torch_load(extraction_path, map_location=self.device)
+    #     #     extraction.append(_extraction)
+    #     for experiment in cross_val_config['cv_experiments']:
+    #         _extraction = common.torch_load(experiment['extraction_path'], map_location=self.device)
+    #         extraction.append(_extraction)
+    #     self.cross_val_extraction = extraction
 
-    def set_training_config(self, training_config, cross_val_config):
+    # def set_training_config(self, training_config, cross_val_config):
+    #     # Check if the trainer has been initialized
+    #     assert not self._inited, 'Trainer has already been initialized. '
+    #     assert self.training_loader is not None, 'training_loader must be set before setting training_config. '
+    #     self.training_config = training_config
+    #     # Load json from path
+    #     if cross_val_config is not None:
+    #         self.cross_val_config = json.load(open(cross_val_config, 'r'))
+    #     else:
+    #         self.cross_val_config = None
+    #     self._init_cross_val()
+
+
+    def set_training_config(self, training_config):
         # Check if the trainer has been initialized
         assert not self._inited, 'Trainer has already been initialized. '
         assert self.training_loader is not None, 'training_loader must be set before setting training_config. '
         self.training_config = training_config
-        # Load json from path
-        self.cross_val_config = json.load(open(cross_val_config, 'r'))
-        self._init_cross_val()
 
         # Initialize state
         state = {}
@@ -67,8 +79,8 @@ class PartialDomainTrainer:
         state['epochs'] = epochs
         state['n_data_epoch'] = 0
         state['iterations'] = iterations
-        state['next_epoch'] = 0
-        state['next_iteration'] = 0
+        state['curr_epoch'] = -1
+        state['curr_iteration'] = 0
         lr_scheduler = CosineAnnealingLR(self.optimizer, epochs * iterations)
         state['lr_scheduler'] = lr_scheduler
         self.state = state
@@ -79,6 +91,9 @@ class PartialDomainTrainer:
 
         # Set _inited flag
         self._inited = True
+
+    def set_cv_evaluation(self, cv_evaluation):
+        self.cv_evaluation = cv_evaluation
 
     def add_val_loader(self, k, loader):
         dataset = loader.dataset
@@ -95,21 +110,21 @@ class PartialDomainTrainer:
         self.training_loader = loader
         self.training_iterator = data_util.ForeverDataIterator(loader)
 
-        # TODO: Refactor this part
-        # Get source model training invisible accuracy
-        logging.info('Getting source model training invisible accuracy... ')
-        self.src_model.eval()
-        dataset.set_scope('all')
-        dataset.eval()
+        # # TODO: Refactor this part
+        # # Get source model training invisible accuracy
+        # logging.info('Getting source model training invisible accuracy... ')
+        # self.src_model.eval()
+        # dataset.set_scope('all')
+        # dataset.eval()
 
-        src_training_pred, training_labels, _ = self.extract_pred(loader, model=self.src_model)
+        # src_training_pred, training_labels, _ = self.extract_pred(loader, model=self.src_model)
 
-        domain_info = dataset.domain_info
-        invisible_mask = torch.isin(training_labels, domain_info.invisible_classes)
+        # domain_info = dataset.domain_info
+        # invisible_mask = torch.isin(training_labels, domain_info.invisible_classes)
 
-        src_training_invisible_acc = (src_training_pred[invisible_mask] == training_labels[invisible_mask]).float().mean().item() * 100
-        logging.info(f'Source model training invisible accuracy: {src_training_invisible_acc}. ')
-        self.src_unseen_acc = src_training_invisible_acc
+        # src_training_invisible_acc = (src_training_pred[invisible_mask] == training_labels[invisible_mask]).float().mean().item() * 100
+        # logging.info(f'Source model training invisible accuracy: {src_training_invisible_acc}. ')
+        # self.src_unseen_acc = src_training_invisible_acc
 
 
     def _training_iteration(self):
@@ -242,8 +257,7 @@ class PartialDomainTrainer:
             logging.debug('Evaluating oracle training features... ')
             oracle_training_evaluation = evaluate.evaluate(domain_info, 
                                                            oracle_training_extraction, 
-                                                           oracle_training_extraction, src_unseen_acc=
-                                                           self.src_unseen_acc, cross_val_extraction=self.cross_val_extraction)
+                                                           oracle_training_extraction, self.cv_evaluation)
         evaluation_result['oracle_training'] = oracle_training_evaluation
 
         # Extract training features
@@ -269,7 +283,7 @@ class PartialDomainTrainer:
             # Extract validation features
             with torch.no_grad():
                 val_extraction = self.extract(val_loader)
-                val_evaluation = evaluate.evaluate(val_domain_info, val_extraction, oracle_training_extraction, src_unseen_acc=self.src_unseen_acc, cross_val_extraction=self.cross_val_extraction)
+                val_evaluation = evaluate.evaluate(val_domain_info, val_extraction, oracle_training_extraction, self.cv_evaluation)
             evaluation_result[k] = val_evaluation
         
         return evaluation_result
@@ -294,38 +308,44 @@ class PartialDomainTrainer:
         epochs = state['epochs']
         iterations = state['iterations']
         training_config = self.training_config
-        eval_freq = training_config['evaluate_freq']
-        if eval_freq == -1:
+        evaluate_freq = training_config['evaluate_freq']
+        if evaluate_freq == -1:
             eval_every = iterations + 1
         else:
-            eval_every = max(1, int(iterations * eval_freq))
-        logging.debug(f'Evaluation frequency: {eval_every}. ')
+            eval_every = max(1, int(iterations * evaluate_freq))
+        logging.debug(f'Evaluation frequency: {evaluate_freq}. ')
+        logging.debug(f'Evaluation every: {eval_every}. ')
         
-        # Pre-training evaluation
-        logging.info('Pre-training evaluation... ')
-        self.evaluate_print()
-
         # Training loop
-        for epoch in range(state['next_epoch'], epochs):
+        # for epoch in range(state['next_epoch'], epochs):
+        while state['curr_epoch'] <= epochs:
+
+            # Evaluation
+            logging.info(f"Evaluating after epoch {state['curr_epoch']}...")
+            self.evaluate_print_save()
+
+            # Set state
+            state['curr_epoch'] += 1
+            state['curr_iteration'] = 0
             state['n_data_epoch'] = 0
-            for iteration in range(state['next_iteration'], iterations):
+
+            if state['curr_epoch'] == epochs:
+                break
+
+            while state['curr_iteration'] < iterations:
                 # Evaluation
-                if iteration > 0 and iteration % eval_every == 0:
-                    logging.info(f'Epoch {epoch}, iteration {iteration}, pre-evaluation... ')
+                if state['curr_iteration'] > 0 and state['curr_iteration'] % eval_every == 0:
+                    logging.info(f"Epoch {state['curr_epoch']}, iteration {state['curr_iteration']}, pre-evaluation... ")
                     self.evaluate_print()
                     
-                logging.debug(f'Epoch {epoch}, iteration {iteration}... ')
+                logging.debug(f"Epoch {state['curr_epoch']}, iteration {state['curr_iteration']}... ")
                 
                 # Training iteration
                 self._training_iteration()
                 
                 # Post iteration
-                state['next_iteration'] = iteration + 1
+                state['curr_iteration'] += 1
                 state['lr_scheduler'].step()
             
-            logging.info(f'Epoch {epoch} finished. Number of data seen: {state["n_data_epoch"]}. ')
+            logging.info(f"Epoch {state['curr_epoch']} finished. Number of data seen: {state['n_data_epoch']}. ")
 
-            # TODO: Refactor this line
-            self.evaluate_print_save()
-            state['next_iteration'] = 0
-            state['next_epoch'] = epoch + 1

@@ -4,6 +4,7 @@ from torch.utils.data import DataLoader
 import random
 import numpy as np
 import sys
+import json
 
 from .data import common as data_api
 from .data import dataset
@@ -12,6 +13,7 @@ from .util import cmd as cmd_util
 from .util import model as model_util
 from .workflow import train
 from .util import common
+from .util import constant as C
 
 
 class HolisticTransfer:
@@ -26,11 +28,11 @@ class HolisticTransfer:
         experiment = self.experiment
 
         def _f(_self):
-            logging.info('Evaluating after epoch... ')
+            logging.debug('In evaluate_print_save... ')
             evaluation = _self.evaluate()
             common.print_metrics(evaluation)
             for k, _evaluation in evaluation.items():
-                epoch = _self.state['next_epoch']
+                epoch = _self.state['curr_epoch']
                 logging.info(f'Saving evaluation for {k}... ')
                 experiment.save_checkpoint(f'evaluation/{k}', epoch, _evaluation)
             logging.info('Saving model... ')
@@ -47,7 +49,7 @@ class HolisticTransfer:
         self.wrapped = True
 
     def fit(self):
-        self._wrap_evaluate_print_savee()
+        self._wrap_evaluate_print_save()
         self.trainer.fit()
 
     def evaluate(self):
@@ -144,6 +146,33 @@ def main(args):
     logging.info('Creating testing data loader... ')
     testing_loader = DataLoader(testing_data, batch_size=batch_size, shuffle=False, num_workers=workers)
     
+    # Init cross-validation experiments
+    if cross_val_config is not None:
+        logging.info('Creating cross-validation experiments... ')
+        cv_evalution = {
+            'source': [],
+            'target': []
+        }
+        cross_val_config = json.load(open(cross_val_config, 'r'))
+        for exp_path in cross_val_config:
+            # Load experiment
+            exp = space.instance_from_path(exp_path)
+            assert C.SOURCE_EPOCH in exp.epochs(C.ORACLE_TRAINING_EVALUATION_CKPT_PATH), 'Source evaluation not found in experiment {exp_path}. '
+            evalution_epochs = exp.epochs(C.
+            ORACLE_TRAINING_EVALUATION_CKPT_PATH)
+            logging.info(f'Experiment {exp_path} has evaluation epochs: {evalution_epochs}, loading {C.SOURCE_EPOCH} as source evaluation and {evalution_epochs[-1]} as target evaluation... ')
+
+            # Load evaluation
+            _cv_evaluation_source = exp.load_checkpoint(C.ORACLE_TRAINING_EVALUATION_CKPT_PATH, C.SOURCE_EPOCH)
+            _cv_evaluation_target = exp.load_checkpoint(C.ORACLE_TRAINING_EVALUATION_CKPT_PATH, evalution_epochs[-1])
+
+            # Append to list
+            cv_evalution['source'].append(_cv_evaluation_source)
+            cv_evalution['target'].append(_cv_evaluation_target)
+    else:
+        cv_evalution = None
+        logging.info('No cross-validation experiments... ')
+
     if args.train:
         source_model_path = experiment.source_model_path
 
@@ -162,7 +191,8 @@ def main(args):
         trainer = train.PartialDomainTrainer(model, optimizer, loss_type, loss_scope, device)
         trainer.set_training_loader(training_loader)
         trainer.add_val_loader('testing', testing_loader)
-        trainer.set_training_config(training_config, cross_val_config)
+        trainer.set_training_config(training_config)
+        trainer.set_cv_evaluation(cv_evalution)
 
         # Create HT instance
         logging.info(f'Creating HolisticTransfer instance... ')
@@ -190,7 +220,8 @@ def main(args):
         trainer = train.PartialDomainTrainer(model, optimizer, loss_type, loss_scope, device)
         trainer.set_training_loader(training_loader)
         trainer.add_val_loader('testing', testing_loader)
-        trainer.set_training_config(training_config, cross_val_config)
+        trainer.set_training_config(training_config)
+        trainer.set_cv_evaluation(cv_evalution)
 
         # Create HT instance
         logging.info(f'Creating HolisticTransfer instance... ')

@@ -20,7 +20,13 @@ class CheckpointDirectory:
         return [os.path.join(self.path, f'{epoch}.pth') for epoch in self.epochs]
 
     def _check_format(self, f):
-        return f.endswith('.pth') and f[:-4].isnumeric()
+        if not f.endswith('.pth'):
+            return False
+        fname = f[:-4]
+        if fname == '-1' or fname.isnumeric():
+            return True
+        else:
+            return False
 
     def reload(self):
         if not os.path.exists(self.path):
@@ -103,7 +109,7 @@ class PathTree:
         return _tree
 
     def __str__(self):
-        return str(self.tree)
+        return str(self.dict_tree)
     
     def __repr__(self):
         return self.__str__()
@@ -180,7 +186,7 @@ class Serialization:
 
 class Experiment(Serialization):
 
-    _DEFAULT_PREFIX = 'model'
+    _DEFAULT_PREFIX = C.MODEL_CKPT_PATH
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -230,12 +236,9 @@ class Experiment(Serialization):
     def log_path(self):
         return self.abs_path('log.txt')
 
-    def epochs(self, prefix=None):
+    def get_checkpoint_dir(self, prefix=None):
         if prefix is None:
             prefix = self._DEFAULT_PREFIX
-        return self.tree.get(prefix).epochs()
-    
-    def get_checkpoint_dir(self, prefix=None):
         path = self.abs_path(prefix)
         return self.tree.get(path)
     
@@ -244,6 +247,18 @@ class Experiment(Serialization):
         ckpt_dir = self.tree.add(path)
         ckpt_dir.save(ckpt, epoch)
 
+    def load_checkpoint(self, prefix, epoch):
+        path = self.abs_path(prefix)
+        ckpt_dir = self.tree.get(path)
+        ckpt = common.torch_load(ckpt_dir.epoch_file(epoch))
+        return ckpt
+
+    def epochs(self, prefix=None):
+        if prefix is None:
+            prefix = self._DEFAULT_PREFIX
+        checkpoint_dir = self.get_checkpoint_dir(prefix)
+        return checkpoint_dir.epochs
+    
     @property
     def source_model_path(self):
         _path = os.path.join(self.source_path, 'source.pth')

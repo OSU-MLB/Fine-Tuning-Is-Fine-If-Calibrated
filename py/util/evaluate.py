@@ -88,17 +88,21 @@ def mask_predict_score(score, label, row_mask=None, column_mask=None):
 
 def get_accuracies(domain_info, score, label, data_ind):
     # Unpack domain_info
-    visible_classes = domain_info.visible_classes
-    invisible_classes = domain_info.invisible_classes
+    visible_classes = domain_info.visible_classes.type(torch.int64)
+    invisible_classes = domain_info.invisible_classes.type(torch.int64)
+    remaining_classes = domain_info.remaining_classes.type(torch.int64)
     dim_score = score.shape[1]
 
     # Masks
     visible_row_mask = torch.isin(data_ind, domain_info.visible_ind)
     invisible_row_mask = torch.isin(data_ind, domain_info.invisible_ind)
+    remaining_row_mask = torch.isin(data_ind, domain_info.remaining_ind)
     visible_column_mask = torch.zeros(dim_score, dtype=torch.bool)
     visible_column_mask[visible_classes] = 1
     invisible_column_mask = torch.zeros(dim_score, dtype=torch.bool)
     invisible_column_mask[invisible_classes] = 1
+    remaining_column_mask = torch.zeros(dim_score, dtype=torch.bool)
+    remaining_column_mask[remaining_classes] = 1
     
     # Calculate metric
     #  From all classes / Over all classes
@@ -109,20 +113,28 @@ def get_accuracies(domain_info, score, label, data_ind):
     
     #  From invisible classes / Over all classes
     invisible_all_accuracy = mask_predict_score(score, label, row_mask=invisible_row_mask, column_mask=None)
+
+    #  From remaining classes / Over all classes
+    remaining_all_accuracy = mask_predict_score(score, label, row_mask=remaining_row_mask, column_mask=None)
     
     #  From visible classes / Over visible classes
     visible_visible_accuracy = mask_predict_score(score, label, row_mask=visible_row_mask, column_mask=visible_column_mask)
     
     #  From invisible classes / Over invisible classes
     invisible_invisible_accuracy = mask_predict_score(score, label, row_mask=invisible_row_mask, column_mask=invisible_column_mask)
+
+    #  From remaining classes / Over remaining classes
+    remaining_remaining_accuracy = mask_predict_score(score, label, row_mask=remaining_row_mask, column_mask=remaining_column_mask)
     
     # Package accuracies
     accuracies = {
         'All/All Accuracy': all_all_accuracy,
         'Visible/All Accuracy': visible_all_accuracy,
         'Invisible/All Accuracy': invisible_all_accuracy,
+        'Remaining/All Accuracy': remaining_all_accuracy,
         'Visible/Visible Accuracy': visible_visible_accuracy,
-        'Invisible/Invisible Accuracy': invisible_invisible_accuracy
+        'Invisible/Invisible Accuracy': invisible_invisible_accuracy,
+        'Remaining/Remaining Accuracy': remaining_remaining_accuracy
     }
     return accuracies
 
@@ -299,28 +311,51 @@ def evaluate_baseline_calibration(domain_info, extraction):
 
     return metric
 
+
+def compute_best_idx_for_better_calibration(curve_results, src_unseen_acc=None):
+    if src_unseen_acc is None:
+         valid = torch.ones(curve_results.shape[0], dtype=torch.bool)
+    else:
+        unseen_accs = curve_results[:, 2]
+        valid = unseen_accs >= src_unseen_acc
+    if not torch.any(valid):
+        best_idx=-1
+    else:
+        masked_overall_accs = torch.where(valid, curve_results[:, 0], torch.tensor(float('-inf'), dtype=curve_results.dtype))
+        best_idx = torch.argmax(masked_overall_accs)
+
+    return best_idx 
+
 # Ping: Input is needed: Src model unseen accuracy, but work will be made on target model. 
-def evaluate_better_calibration(domain_info, extraction, curve_results, src_unseen_acc, cross_val_extraction):
-    import pdb; pdb.set_trace()
-    unseen_accs = curve_results[:, 2]
-    valid = unseen_accs >= src_unseen_acc
+def evaluate_better_calibration(domain_info, extraction, curve_results, cv_evaluation):
+    average_calib_factor = 0.
+    calib_count = 0
 
-    # Mask the overall accuracies based on the valid mask
-    masked_overall_accs = torch.where(valid, curve_results[:, 0], torch.tensor(float('-inf'), dtype=curve_results.dtype, device=curve_results.device))
-
-    # Find the index of the maximum masked value
-    best_idx = torch.argmax(masked_overall_accs)
-    best_calib_factor = curve_results[best_idx, 3]
-
+    # for _cross_val_extraction in cross_val_extraction:
+    for _cv_evaluation_source, _cv_evaluation_target in zip(cv_evaluation['source'], cv_evaluation['target']):
+        src_unseen_acc = _cv_evaluation_source.metric['Classifier Accuracy']['Remaining/All Accuracy']['Top- 1 Accuracy']
+        _cv_evaluation_source.metric
+        curve_results, _ = _get_curve_results(_cv_evaluation_target.domain_info, _cv_evaluation_target.extraction)
+        best_idx = compute_best_idx_for_better_calibration(curve_results, src_unseen_acc=src_unseen_acc) #Need unseen accuracy of source model on cross  validation unseen classes
+        if best_idx == -1:
+            continue
+        else:
+            best_calib_factor = curve_results[best_idx, 3]
+            average_calib_factor += best_calib_factor
+            calib_count += 1
+    #calculate average calibration factor for three cross validation models trained on half of seen classes.        
+    average_calib_factor = average_calib_factor / calib_count
+            
     score = extraction.logits.clone()
-    score[:, domain_info.invisible_classes] += best_calib_factor
+    score[:, domain_info.invisible_classes] += average_calib_factor #add calibration factor to all invisible classes of target model 
 
-    metric = get_accuracies(domain_info, score, extraction.labels, extraction.data_ind)
+    #get accuracy after adding calibration factor to all invisible classes of target model
+    metric = get_accuracies(domain_info, score, extraction.labels, extraction.data_ind) 
 
     return metric
 ################################################################################
 
-def evaluate(domain_info, extraction, oracle_extraction, src_unseen_acc=None, cross_val_extraction=None):
+def evaluate(domain_info, extraction, oracle_extraction, cv_evaluation=None):
     # Evaluate the features through the classifier (regular cnn model)
     logging.debug('Evaluating classifier...')
     clsf_metric = evaluate_clsf(domain_info, extraction, oracle_extraction)
@@ -352,8 +387,12 @@ def evaluate(domain_info, extraction, oracle_extraction, src_unseen_acc=None, cr
     baseline_calibration_metric = evaluate_baseline_calibration(domain_info, extraction)
 
     # Evaluate better calibration
-    logging.debug('Evaluating better calibration...')
-    better_calibration_metric = evaluate_better_calibration(domain_info, extraction, curve_results, src_unseen_acc, cross_val_extraction)
+    if cv_evaluation is not None:
+        logging.debug('Evaluating better calibration...')
+        better_calibration_metric = evaluate_better_calibration(domain_info, extraction, curve_results, cv_evaluation)
+    else:
+        better_calibration_metric = None
+        logging.debug('Better calibration evaluation skipped...')
 
     # Package evaluation
     logging.debug('Packaging evaluation...')

@@ -107,7 +107,6 @@ class DummyContext:
     def __exit__(self, *args):
         pass
 
-
-def print_metrics(self, metrics):
+def print_metrics(metrics):
     for _k, _r in metrics.items():
         logging.info(f'{_k} metrics: \n{_r}')
