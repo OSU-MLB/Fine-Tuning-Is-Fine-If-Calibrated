@@ -2,7 +2,7 @@
 
 __Official implementation of the following work:__
 
-*Mai, Z., Chowdhury, A., Zhang, P., Tu, C.H., Chen, H.Y., Pahuja, V., Berger-Wolf, T., Gao, S., Stewart, C., Su, Y., & Chao, W.L. [Fine-Tuning is Fine, if Calibrated](https://arxiv.org/abs/2409.16223). NeurIPS 2024.*  
+*Z. Mai, A. Chowdhury, P. Zhang, C.-H. Tu, H.-Y. Chen, V. Pahuja, T. Berger-Wolf, S. Gao, C. Stewart, Y. Su, & W.-L. Chao. [Fine-tuning is fine, if calibrated](https://arxiv.org/abs/2409.16223). NeurIPS 2024.*  
 
 ## Preparation
 
