@@ -1,0 +1,5 @@
+[
+    "OfficeHome/resnet50/Ar/Pr/15/random/35/{'loss_type': 'cross-entropy', 'loss_scope': 'all', 'dropout': 0.1, 'freeze_classifier': False, 'freeze_bn': False, 'freeze_backbone': False}/SGD/{'lr': 0.001, 'weight_decay': 0.0005, 'momentum': 0.9, 'nesterov': True}/0",
+    "OfficeHome/resnet50/Ar/Pr/15/random/35/{'loss_type': 'cross-entropy', 'loss_scope': 'all', 'dropout': 0.1, 'freeze_classifier': False, 'freeze_bn': False, 'freeze_backbone': False}/SGD/{'lr': 0.001, 'weight_decay': 0.0005, 'momentum': 0.9, 'nesterov': True}/1",
+    "OfficeHome/resnet50/Ar/Pr/15/random/35/{'loss_type': 'cross-entropy', 'loss_scope': 'all', 'dropout': 0.1, 'freeze_classifier': False, 'freeze_bn': False, 'freeze_backbone': False}/SGD/{'lr': 0.001, 'weight_decay': 0.0005, 'momentum': 0.9, 'nesterov': True}/2"
+]
